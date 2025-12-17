@@ -12,7 +12,7 @@ String formatTelemetry(const FlightData& data) {
   
   // Header with timestamp and packet info
   output += "=== IRIS Flight Telemetry ===\n";
-  output += "Time: " + String(data.timestamp) + "ms | Packet: #" + String(data.packetId) + "\n";
+  //output += "Time: " + String(data.timestamp) + "ms | Packet: #" + String(data.packetId) + "\n";
   
   // Accelerometer data (m/s2)
   output += "Accelerometer: ";
@@ -105,7 +105,7 @@ String formatCompactTelemetry(const FlightData& data) {
   String output = "";
   
   // CSV-style compact format: timestamp,ax,ay,az,gx,gy,gz,mx,my,mz,heading,temp,pressure,lat,lon,satellites
-  output += String(data.timestamp) + ",";
+  //output += String(data.timestamp) + ",";
   
   // Accelerometer
   output += String(data.accel.x, 2) + "," + String(data.accel.y, 2) + "," + String(data.accel.z, 2) + ",";

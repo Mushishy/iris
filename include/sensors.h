@@ -8,54 +8,34 @@
 #include "structs.h"
 #include "settings.h"
 
-// Built-in sensor references for Arduino Nano 33 BLE
-// IMU and BARO are global objects provided by the libraries
-extern UART gpsSerial;
-extern TinyGPSPlus gps;
+UART gpsSerial(digitalPinToPinName(GPS_RX_PIN), digitalPinToPinName(GPS_TX_PIN));
+TinyGPSPlus gps;
 
 // ========== SENSOR READING FUNCTIONS ==========
 
-AccelerometerData readAccelerometer() {
-  AccelerometerData data;
-  
-  // Read from built-in BMI270 accelerometer
+bool readAccelerometer(AccelerometerData& data) {
+  // Read from built-in BMI270 accelerometer - returns raw values in g
   if (IMU.accelerationAvailable()) {
     IMU.readAcceleration(data.x, data.y, data.z);
-    // BMI270 already returns values in g, convert to m/s²
-    data.x *= EARTH_GRAVITY_MS2;
-    data.y *= EARTH_GRAVITY_MS2;
-    data.z *= EARTH_GRAVITY_MS2;
-  } else {
-    data.x = data.y = data.z = 0.0;
+    return true;
   }
-  
-  return data;
+  return false;
 }
 
-GyroscopeData readGyroscope() {
-  GyroscopeData data;
-  
+bool readGyroscope(GyroscopeData& data) {
   // Read from built-in BMI270 gyroscope
   if (IMU.gyroscopeAvailable()) {
     IMU.readGyroscope(data.x, data.y, data.z);
     // BMI270 returns values in °/s (degrees per second)
-  } else {
-    data.x = data.y = data.z = 0.0;
+    return true;
   }
-  
-  return data;
+  return false;
 }
 
-MagnetometerData readMagnetometer() {
-  MagnetometerData data;
-  
-  // Read from built-in BMM150 magnetometer
+bool readMagnetometer(MagnetometerData& data) {
+  // Read from built-in BMM150 magnetometer - returns raw values in µT
   if (IMU.magneticFieldAvailable() && IMU.accelerationAvailable()) {
     IMU.readMagneticField(data.x, data.y, data.z);
-    // BMM150 returns values in µT (microtesla), convert to mG
-    data.x *= 10.0;  // 1 µT = 10 mG
-    data.y *= 10.0;
-    data.z *= 10.0;
     
     // Get accelerometer data for tilt compensation
     float ax, ay, az;
@@ -87,42 +67,47 @@ MagnetometerData readMagnetometer() {
     // data.heading += COMPASS_CALIBRATION_OFFSET;  // Add to settings.h
     // data.heading += MAGNETIC_DECLINATION_DEGREES; // Add to settings.h  
     // if (data.heading >= 360.0) data.heading -= 360.0;
-  } else {
-    data.x = data.y = data.z = 0.0;
-    data.heading = 0.0;
+    return true;
+  }
+  return false;
+}
+
+bool readEnvironmental(EnvironmentalData& data) {
+  // Read from built-in LPS22HB barometric pressure sensor - returns raw values
+  data.temperature = BARO.readTemperature();  // °C
+  data.pressure = BARO.readPressure();        // kPa (raw)
+  
+  // Calculate altitude using barometric formula  
+  data.altitude = ALTITUDE_CALCULATION_CONSTANT * (1.0 - pow(data.pressure / STANDARD_SEA_LEVEL_PRESSURE_KPA, BAROMETRIC_EXPONENT));
+  
+  // Check for valid readings
+  if (isnan(data.temperature) || isnan(data.pressure) || isnan(data.altitude)) {
+    return false;
   }
   
-  return data;
+  return true;
 }
 
-EnvironmentalData readEnvironmental() {
-  EnvironmentalData data;
-  
-  // Read from built-in LPS22HB barometric pressure sensor
-  data.temperature = BARO.readTemperature();
-  data.pressure = BARO.readPressure() * 1000.0;  // Convert kPa to Pa
-  
-  // Calculate altitude using barometric formula
-  float pressure_kPa = data.pressure / 1000.0;
-  data.altitude = ALTITUDE_CALCULATION_CONSTANT * (1.0 - pow(pressure_kPa / STANDARD_SEA_LEVEL_PRESSURE_KPA, BAROMETRIC_EXPONENT));
-  
-  if (isnan(data.temperature)) data.temperature = 0.0;
-  if (isnan(data.pressure)) data.pressure = 0.0;
-  if (isnan(data.altitude)) data.altitude = 0.0;
-  
-  return data;
+bool readGPS(GPSData& data) {
+  // GPS is valid if we have at least location data
+  if (gps.location.isValid()) {
+    data.latitude = gps.location.lat();
+    data.longitude = gps.location.lng();
+    data.hdop = gps.hdop.isValid() ? gps.hdop.hdop() : -1.0;
+    data.satellites = gps.satellites.isValid() ? gps.satellites.value() : 0;
+    data.speed = gps.speed.isValid() ? gps.speed.kmph() : -1.0;
+    data.course = gps.course.isValid() ? gps.course.deg() : -1.0;
+    return true;
+  }
+  return false;
 }
 
-GPSData readGPS() {
-  GPSData data;
-  data.latitude = gps.location.isValid() ? gps.location.lat() : 0.0;
-  data.longitude = gps.location.isValid() ? gps.location.lng() : 0.0;
-  data.hdop = gps.hdop.isValid() ? gps.hdop.hdop() : 0.0;
-  data.satellites = gps.satellites.isValid() ? gps.satellites.value() : 0;
-  data.speed = gps.speed.isValid() ? gps.speed.kmph() : 0.0;
-  data.course = gps.course.isValid() ? gps.course.deg() : 0.0;
-  return data;
+void processGPSData() {
+  while (gpsSerial.available() > 0) {
+    gps.encode(gpsSerial.read());
+  }
 }
+
 
 // ========== SENSOR INITIALIZATION ==========
 
@@ -136,12 +121,24 @@ bool initializeSensors() {
 #endif
   Serial.println("  -> GPS initialized waiting for satelite fix");
 
+#ifdef GPS_WAIT_FOR_SATELLITES
+  Serial.println("Waiting for GPS lock...");
+  while (gps.satellites.value() < 3) {
+    processGPSData();
+  }
+  Serial.println("GPS lock acquired.");
+#endif
+
   // Initialize built-in IMU (BMI270 + BMM150)
   if (!IMU.begin()) {
     Serial.println("Failed to initialize IMU!");
     return false;
   }
   Serial.println("  -> IMU initialized");
+
+  Serial.println(String("Accel Sample Rate: ") + IMU.accelerationSampleRate());
+  Serial.println(String("Gyro Sample Rate: ") + IMU.gyroscopeSampleRate());
+  Serial.println(String("Mag Sample Rate: ") + IMU.magneticFieldSampleRate());  
   
   // Initialize built-in barometric pressure sensor (LPS22HB)
   if (!BARO.begin()) {
@@ -151,35 +148,6 @@ bool initializeSensors() {
   }
   
   return true;
-}
-
-void setupSerial() {
-  // Begin Serial
-  Serial.begin(SERIAL_BAUD_RATE);
-  while (!Serial) {
-    delay(10);
-  }
-  Serial.println("Nano 33 BLE Sense Rev2.");
-}
-
-// =============== SENSOR LOOP ===============
-
-void processGPSData() {
-  while (gpsSerial.available() > 0) {
-    gps.encode(gpsSerial.read());
-  }
-}
-
-FlightData collectTelemetryData() {
-  FlightData data;
-  data.timestamp = millis();
-  data.packetId = 0;
-  data.accel = readAccelerometer();
-  data.gyro = readGyroscope();
-  data.mag = readMagnetometer();
-  data.env = readEnvironmental();
-  data.gps = readGPS();
-  return data;
 }
 
 #endif
