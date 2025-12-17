@@ -2,220 +2,184 @@
 #define SENSORS_H
 
 #include <Arduino.h>
-#include "Arduino_BMI270_BMM150.h"  // IMU library
-#include "Arduino_LPS22HB.h"        // Pressure sensor library
-#include "Arduino_HS300x.h"         // Humidity sensor library
-#include <TinyGPSPlus.h>            // GPS library
-#include <SoftwareSerial.h>         // Software serial for GPS
+#include <Arduino_BMI270_BMM150.h>  // Built-in IMU (accel, gyro, mag)
+#include <Arduino_LPS22HB.h>        // Built-in barometric pressure sensor
+#include <TinyGPSPlus.h>
 #include "structs.h"
 #include "settings.h"
 
-// Global sensor instances
-extern BoschSensorClass IMU;       // BMI270 + BMM150 IMU
-extern bool imuInitialized;
-extern bool pressureInitialized;
-extern bool humidityInitialized;
-extern bool gpsInitialized;
-
-// GPS instances
+// Built-in sensor references for Arduino Nano 33 BLE
+// IMU and BARO are global objects provided by the libraries
+extern UART gpsSerial;
 extern TinyGPSPlus gps;
-extern SoftwareSerial gpsSerial;
-
-// ========== SENSOR INITIALIZATION ==========
-
-bool initializeIMU() {
-  if (!IMU.begin()) {
-    Serial.println("Failed to initialize IMU!");
-    return false;
-  }
-  Serial.println("IMU (BMI270 + BMM150) initialized");
-  return true;
-}
-
-bool initializePressureSensor() {
-  if (!BARO.begin()) {
-    Serial.println("Failed to initialize pressure sensor!");
-    return false;
-  }
-  Serial.println("Pressure sensor (LPS22HB) initialized");
-  return true;
-}
-
-bool initializeHumiditySensor() {
-  if (!HS300x.begin()) {
-    Serial.println("Failed to initialize humidity sensor!");
-    return false;
-  }
-  Serial.println("Humidity sensor (HS300x) initialized");
-  return true;
-}
-
-bool initializeGPS() {
-#ifdef ENABLE_GPS
-  pinMode(GPS_PPS_PIN, INPUT);
-  gpsSerial.begin(GPS_BAUD_RATE);
-  Serial.println("GPS module initialized");
-  Serial.println("Waiting for GPS fix...");
-  return true;
-#else
-  Serial.println("GPS disabled in settings");
-  return false;
-#endif
-}
-
-bool initializeSensors() {
-  Serial.println("Initializing sensors...");
-  
-  imuInitialized = initializeIMU();
-  pressureInitialized = initializePressureSensor();
-  humidityInitialized = initializeHumiditySensor();
-  gpsInitialized = initializeGPS();
-  
-  // At minimum, we need the IMU to work
-  if (!imuInitialized) {
-    Serial.println("Critical: IMU initialization failed!");
-    return false;
-  }
-  
-  Serial.println("Sensor initialization complete");
-  return true;
-}
 
 // ========== SENSOR READING FUNCTIONS ==========
 
 AccelerometerData readAccelerometer() {
-  AccelerometerData data = {0};
+  AccelerometerData data;
   
-  if (imuInitialized && IMU.accelerationAvailable()) {
+  // Read from built-in BMI270 accelerometer
+  if (IMU.accelerationAvailable()) {
     IMU.readAcceleration(data.x, data.y, data.z);
-    
-    // Convert from g to m/s²
+    // BMI270 already returns values in g, convert to m/s²
     data.x *= EARTH_GRAVITY_MS2;
     data.y *= EARTH_GRAVITY_MS2;
     data.z *= EARTH_GRAVITY_MS2;
-    
-    // Calculate magnitude
-    data.magnitude = sqrt(data.x * data.x + data.y * data.y + data.z * data.z);
+  } else {
+    data.x = data.y = data.z = 0.0;
   }
   
   return data;
 }
 
 GyroscopeData readGyroscope() {
-  GyroscopeData data = {0};
+  GyroscopeData data;
   
-  if (imuInitialized && IMU.gyroscopeAvailable()) {
+  // Read from built-in BMI270 gyroscope
+  if (IMU.gyroscopeAvailable()) {
     IMU.readGyroscope(data.x, data.y, data.z);
-    
-    // Calculate magnitude
-    data.magnitude = sqrt(data.x * data.x + data.y * data.y + data.z * data.z);
+    // BMI270 returns values in °/s (degrees per second)
+  } else {
+    data.x = data.y = data.z = 0.0;
   }
   
   return data;
 }
 
 MagnetometerData readMagnetometer() {
-  MagnetometerData data = {0};
+  MagnetometerData data;
   
-  if (imuInitialized && IMU.magneticFieldAvailable()) {
+  // Read from built-in BMM150 magnetometer
+  if (IMU.magneticFieldAvailable() && IMU.accelerationAvailable()) {
     IMU.readMagneticField(data.x, data.y, data.z);
+    // BMM150 returns values in µT (microtesla), convert to mG
+    data.x *= 10.0;  // 1 µT = 10 mG
+    data.y *= 10.0;
+    data.z *= 10.0;
     
-    // Calculate magnitude
-    data.magnitude = sqrt(data.x * data.x + data.y * data.y + data.z * data.z);
+    // Get accelerometer data for tilt compensation
+    float ax, ay, az;
+    IMU.readAcceleration(ax, ay, az);
     
-    // Calculate heading (simple 2D compass)
-    // Note: This is a basic calculation - for better accuracy, use tilt compensation
-    data.heading = atan2(data.y, data.x) * 180.0 / PI;
+    // Calculate pitch and roll from accelerometer (in radians)
+    float pitch = atan2(ax, sqrt(ay * ay + az * az));
+    float roll = atan2(ay, az);
+    
+    // Tilt-compensated magnetometer readings
+    float mag_x_comp = data.x * cos(pitch) + data.z * sin(pitch);
+    float mag_y_comp = data.x * sin(roll) * sin(pitch) + 
+                       data.y * cos(roll) - 
+                       data.z * sin(roll) * cos(pitch);
+    
+    // Calculate tilt-compensated heading (0-360°)
+    data.heading = atan2(mag_y_comp, mag_x_comp) * 180.0 / PI;
     if (data.heading < 0) {
-      data.heading += 360.0;
+      data.heading += 360.0; // Normalize to 0-360°
     }
+    
+    // Debug output (remove after testing)
+    // Serial.print("Pitch: "); Serial.print(pitch * 180.0 / PI);
+    // Serial.print(" Roll: "); Serial.print(roll * 180.0 / PI);
+    // Serial.print(" Heading: "); Serial.println(data.heading);
+    
+    // Apply calibration offset and magnetic declination correction
+    // TODO: Calibrate by pointing device north and noting the offset needed
+    // data.heading += COMPASS_CALIBRATION_OFFSET;  // Add to settings.h
+    // data.heading += MAGNETIC_DECLINATION_DEGREES; // Add to settings.h  
+    // if (data.heading >= 360.0) data.heading -= 360.0;
+  } else {
+    data.x = data.y = data.z = 0.0;
+    data.heading = 0.0;
   }
   
   return data;
 }
 
 EnvironmentalData readEnvironmental() {
-  EnvironmentalData data = {0};
+  EnvironmentalData data;
   
-  // Read pressure sensor data
-  if (pressureInitialized) {
-    data.temperature_lps = BARO.readTemperature();
-    data.pressure = BARO.readPressure(); // Returns kPa
-    
-    // Calculate altitude from pressure (standard atmosphere model)
-    data.altitude = 44330.0 * (1.0 - pow(data.pressure / STANDARD_SEA_LEVEL_PRESSURE_KPA, 0.1903));
-  }
+  // Read from built-in LPS22HB barometric pressure sensor
+  data.temperature = BARO.readTemperature();
+  data.pressure = BARO.readPressure() * 1000.0;  // Convert kPa to Pa
   
-  // Read humidity sensor data  
-  if (humidityInitialized) {
-    data.temperature_hs = HS300x.readTemperature();
-    data.humidity = HS300x.readHumidity();
-  }
+  // Calculate altitude using barometric formula
+  float pressure_kPa = data.pressure / 1000.0;
+  data.altitude = ALTITUDE_CALCULATION_CONSTANT * (1.0 - pow(pressure_kPa / STANDARD_SEA_LEVEL_PRESSURE_KPA, BAROMETRIC_EXPONENT));
+  
+  if (isnan(data.temperature)) data.temperature = 0.0;
+  if (isnan(data.pressure)) data.pressure = 0.0;
+  if (isnan(data.altitude)) data.altitude = 0.0;
   
   return data;
 }
 
 GPSData readGPS() {
-  GPSData data = {0};
-  
-  if (!gpsInitialized) {
-    return data;
-  }
-  
+  GPSData data;
   data.latitude = gps.location.isValid() ? gps.location.lat() : 0.0;
   data.longitude = gps.location.isValid() ? gps.location.lng() : 0.0;
   data.hdop = gps.hdop.isValid() ? gps.hdop.hdop() : 0.0;
   data.satellites = gps.satellites.isValid() ? gps.satellites.value() : 0;
   data.speed = gps.speed.isValid() ? gps.speed.kmph() : 0.0;
   data.course = gps.course.isValid() ? gps.course.deg() : 0.0;
-  data.altitude_gps = gps.altitude.isValid() ? gps.altitude.meters() : 0.0;
-  data.fix_valid = gps.location.isValid();
-  
   return data;
 }
 
-// Process incoming GPS data
+// ========== SENSOR INITIALIZATION ==========
+
+bool initializeSensors() {
+  Serial.println("Initializing Arduino Nano 33 BLE built-in sensors...");
+  
+  // Initialize GPS
+  gpsSerial.begin(GPS_BAUD_RATE);
+#ifdef GPS_PPS_PIN
+  pinMode(GPS_PPS_PIN, INPUT);
+#endif
+  Serial.println("  -> GPS initialized waiting for satelite fix");
+
+  // Initialize built-in IMU (BMI270 + BMM150)
+  if (!IMU.begin()) {
+    Serial.println("Failed to initialize IMU!");
+    return false;
+  }
+  Serial.println("  -> IMU initialized");
+  
+  // Initialize built-in barometric pressure sensor (LPS22HB)
+  if (!BARO.begin()) {
+    Serial.println("Failed to initialize BARO!");
+  } else {
+    Serial.println("  -> Baro initialized");
+  }
+  
+  return true;
+}
+
+void setupSerial() {
+  // Begin Serial
+  Serial.begin(SERIAL_BAUD_RATE);
+  while (!Serial) {
+    delay(10);
+  }
+  Serial.println("Nano 33 BLE Sense Rev2.");
+}
+
+// =============== SENSOR LOOP ===============
+
 void processGPSData() {
   while (gpsSerial.available() > 0) {
-    if (gps.encode(gpsSerial.read())) {
-      // GPS data successfully parsed - ready for use in telemetry
-    }
+    gps.encode(gpsSerial.read());
   }
 }
 
-// ========== COMPLETE DATA COLLECTION ==========
-
 FlightData collectTelemetryData() {
   FlightData data;
-  
   data.timestamp = millis();
-  data.packetId = 0; // Will be set by caller
-  
+  data.packetId = 0;
   data.accel = readAccelerometer();
   data.gyro = readGyroscope();
   data.mag = readMagnetometer();
   data.env = readEnvironmental();
   data.gps = readGPS();
-  
-  // Estimate battery voltage (placeholder - Nano 33 BLE doesn't have built-in battery monitoring)
-  data.battery_voltage = 3.3; // Assume 3.3V operation
-  
   return data;
-}
-
-// ========== SENSOR STATUS FUNCTIONS ==========
-
-void printSensorStatus() {
-  Serial.println("=== Sensor Status ===");
-  Serial.println("IMU (BMI270+BMM150): " + String(imuInitialized ? "OK" : "FAILED"));
-  Serial.println("Pressure (LPS22HB): " + String(pressureInitialized ? "OK" : "FAILED"));
-  Serial.println("Humidity (HS300x): " + String(humidityInitialized ? "OK" : "FAILED"));
-  Serial.println("GPS Module: " + String(gpsInitialized ? "OK" : "FAILED"));
-  if (gpsInitialized && gps.satellites.isValid()) {
-    Serial.println("  GPS Fix: " + String(gps.location.isValid() ? "VALID" : "SEARCHING..."));
-    Serial.println("  Satellites: " + String(gps.satellites.value()));
-  }
-  Serial.println("====================");
 }
 
 #endif
