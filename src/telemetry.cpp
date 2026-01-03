@@ -1,11 +1,12 @@
 #include "telemetry.h"
+#include "structs.h"
 
 String formatTestTelemetry(const FlightData& data, TelemetryType type) {
   String output = "";
   
   // Header with timestamp and packet info
   output += "=== IRIS Flight Telemetry ===";
-  output += "\nTime: " + String(millis()) + "ms";
+  output += "\nTime: " + String(GET_TIME_MS()) + "ms";
   
   if (type == ACCEL || type == ALL) {
     output += "\n";
@@ -32,11 +33,11 @@ String formatTestTelemetry(const FlightData& data, TelemetryType type) {
     output += "\n";
     // Environmental data
     output += "Environment: ";
-    output += "T=" + String(data.env.temperature, 1) + "°C P=" + String(data.env.pressure, 0) + "kPa Alt=" + String(data.env.pressureAltitude, 1) + "m";
+    output += "T=" + String(data.env.temperature, 1) + "°C P=" + String(data.env.pressure, 0) + "kPa Alt=" + String(data.env.rawAlt, 1) + "m";
     output += "\n";
     // Altitude tracking
     output += "Altitude Tracking: ";
-    output += "Max=" + String(data.maxAltitude, 1) + "m Launch=" + String(data.launchAltitude, 1) + "m AGL=" + String(data.env.pressureAltitude - data.launchAltitude, 1) + "m";
+    output += "Max=" + String(data.maxAltitude, 1) + "m Launch=" + String(data.launchAltitude, 1) + "m AGL=" + String(data.env.rawAlt - data.launchAltitude, 1) + "m";
   }
   
   if (type == GPS || type == ALL) {

@@ -3,12 +3,7 @@
 // ========== GLOBAL VARIABLES (DEFINITIONS) ==========
 UART gpsSerial(digitalPinToPinName(GPS_RX_PIN), digitalPinToPinName(GPS_TX_PIN));
 TinyGPSPlus gps;
-
-#ifdef CALIBRATION_ENABLED
-  SensorCalibration sensorCalibration;
-  void applyCalibratedAccelerometer(AccelerometerData& data);
-  void applyCalibratedGyroscope(GyroscopeData& data);
-#endif
+extern FlightData flightData;
 
 // ========== SENSOR READING FUNCTIONS ==========
 
@@ -19,6 +14,7 @@ bool readAccelerometer(AccelerometerData& data) {
     // BMI270 returns values in g (earth gravity)
     
 #ifdef CALIBRATION_ENABLED
+    extern SensorCalibration sensorCalibration;
     if (sensorCalibration.accel.isCalibrated) {
       applyCalibratedAccelerometer(data);
     }
@@ -35,6 +31,7 @@ bool readGyroscope(GyroscopeData& data) {
     // BMI270 returns values in °/s (degrees per second)
     
 #ifdef CALIBRATION_ENABLED
+    extern SensorCalibration sensorCalibration;
     if (sensorCalibration.gyro.isCalibrated) {
       applyCalibratedGyroscope(data);
     }
@@ -49,6 +46,14 @@ bool readMagnetometer(MagnetometerData& data) {
   if (IMU.magneticFieldAvailable()) {
     IMU.readMagneticField(data.x, data.y, data.z);  
     // BMM150 returns values in µT (micro Tesla)
+#ifdef CALIBRATION_ENABLED
+#ifdef MAGNETOMETER_CALIBRATION_ENABLED
+    extern SensorCalibration sensorCalibration;
+    if (sensorCalibration.mag.isCalibrated) {
+      applyCalibratedMagnetometer(data);
+    }
+#endif
+#endif
     return true;
   }
   return false;
@@ -60,10 +65,10 @@ bool readEnvironmental(EnvironmentalData& data) {
   data.pressure = BARO.readPressure();        // kPa (raw)
   
   // Calculate altitude using barometric formula  
-  data.pressureAltitude = SEA_LEVEL_ALTITUDE * (1.0 - POW(data.pressure / STANDARD_SEA_LEVEL_PRESSURE_KPA, BAROMETRIC_EXPONENT));
+  data.rawAlt = SEA_LEVEL_ALTITUDE * (1.0 - pow(data.pressure / STANDARD_SEA_LEVEL_PRESSURE_KPA, BAROMETRIC_EXPONENT));
   
   // Check for valid readings
-  if (isnan(data.temperature) || isnan(data.pressure) || isnan(data.pressureAltitude)) {
+  if (isnan(data.temperature) || isnan(data.pressure) || isnan(data.rawAlt)) {
     return false;
   }
   
@@ -96,8 +101,8 @@ AttitudeData calculateAttitude(const AccelerometerData& accel, const Magnetomete
   AttitudeData attitude;
   
   // Roll and Pitch from accelerometer
-  attitude.roll = atan2(accel.y, accel.z) * 180.0 / PI;
-  attitude.pitch = atan2(-accel.x, sqrt(POW(accel.y, 2) + POW(accel.z, 2))) * 180.0 / PI;
+  attitude.roll = atan2(accel.y, sqrt(pow(accel.x, 2) + pow(accel.z, 2))) * 180.0/PI;
+  attitude.pitch = atan2(-accel.x, sqrt(pow(accel.y, 2) + pow(accel.z, 2))) * 180.0 / PI;
   
   // Convert to radians for tilt compensation
   float pitch_rad = attitude.pitch * PI / 180.0;
@@ -111,114 +116,14 @@ AttitudeData calculateAttitude(const AccelerometerData& accel, const Magnetomete
   
   // Yaw (heading) from tilt-compensated magnetometer
   attitude.yaw = atan2(mag_y_comp, mag_x_comp) * 180.0 / PI;
-  if (attitude.yaw < 0) {
-    attitude.yaw += 360.0;
-  }
+  attitude.yaw = fmod(attitude.yaw + 360.0, 360.0); 
+
+  // Calculate off-vertical angle
+  attitude.offVert = sqrt(pow(attitude.roll, 2) + pow(attitude.pitch, 2));
   
   return attitude;
 }
 */
-
-// ========== CALIBRATION FUNCTIONS ==========
-#ifdef CALIBRATION_ENABLED
-  bool calibrateAccelerometer() {
-    Serial.println("Accelerometer calibration - place flat...");
-
-    float sumX = 0, sumY = 0, sumZ = 0;
-    int samples = 0;
-    
-    for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
-      AccelerometerData data;
-      if (IMU.accelerationAvailable()) {
-        IMU.readAcceleration(data.x, data.y, data.z);
-        sumX += data.x;
-        sumY += data.y;
-        sumZ += data.z;
-        samples++;
-      }
-      delay(CALIBRATION_DELAY_MS);
-    }
-    
-    if (samples < CALIBRATION_SAMPLES * 0.8) {
-      Serial.println("Accel calibration failed");
-      return false;
-    }
-    
-    sensorCalibration.accel.biasX = sumX / samples;
-    sensorCalibration.accel.biasY = sumY / samples;
-    sensorCalibration.accel.biasZ = (sumZ / samples) - 1.0;
-    
-    sensorCalibration.accel.scaleX = 1.0;
-    sensorCalibration.accel.scaleY = 1.0;
-    sensorCalibration.accel.scaleZ = 1.0;
-    sensorCalibration.accel.isCalibrated = true;
-    
-    Serial.println("Accel calibration done");
-    return true;
-  }
-
-  bool calibrateGyroscope() {
-    Serial.println("Gyroscope calibration - keep still...");
-    
-    float sumX = 0, sumY = 0, sumZ = 0;
-    int samples = 0;
-    
-    for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
-      GyroscopeData data;
-      if (IMU.gyroscopeAvailable()) {
-        IMU.readGyroscope(data.x, data.y, data.z);
-        sumX += data.x;
-        sumY += data.y;
-        sumZ += data.z;
-        samples++;
-      }
-      delay(CALIBRATION_DELAY_MS);
-    }
-    
-    if (samples < CALIBRATION_SAMPLES * 0.8) {
-      Serial.println("Gyro calibration failed");
-      return false;
-    }
-    
-    sensorCalibration.gyro.biasX = sumX / samples;
-    sensorCalibration.gyro.biasY = sumY / samples;
-    sensorCalibration.gyro.biasZ = sumZ / samples;
-    sensorCalibration.gyro.isCalibrated = true;
-    
-    Serial.println("Gyro calibration done");
-    return true;
-  }
-
-  bool calibrateAllSensors() {
-    Serial.println("Starting calibration...");
-    
-    bool success = true;
-    
-    if (!calibrateAccelerometer()) success = false;
-    if (!calibrateGyroscope()) success = false;
-    
-    if (success) {
-      Serial.println("Calibration complete");
-    } else {
-      Serial.println("Calibration failed");
-    }
-    
-    return success;
-  }
-
-  void applyCalibratedAccelerometer(AccelerometerData& data) {
-    data.x = (data.x - sensorCalibration.accel.biasX) * sensorCalibration.accel.scaleX;
-    data.y = (data.y - sensorCalibration.accel.biasY) * sensorCalibration.accel.scaleY;
-    data.z = (data.z - sensorCalibration.accel.biasZ) * sensorCalibration.accel.scaleZ;
-  }
-
-  void applyCalibratedGyroscope(GyroscopeData& data) {
-    data.x -= sensorCalibration.gyro.biasX;
-    data.y -= sensorCalibration.gyro.biasY;
-    data.z -= sensorCalibration.gyro.biasZ;
-  }
-
-#endif
 
 // ========== SENSOR INITIALIZATION ==========
 

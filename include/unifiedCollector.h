@@ -2,10 +2,8 @@
 #define UNIFIED_COLLECTOR_H
 
 #include <Arduino.h>
-#include "structs.h"
 #include "settings.h"
-#include "sensors.h"
-#include "sdCards.h"
+#include "structs.h"
 
 extern UnifiedCollectorBuffer collectorBuffer;
 extern FlightData flightData;

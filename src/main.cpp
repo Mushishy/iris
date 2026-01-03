@@ -41,13 +41,11 @@ void setup() {
   deleteFlightDataFile(SD_CS_2);
   
   changeState(DEBUG);
-  stateData.startTime = millis();
+  stateData.startTime = GET_TIME_MS();
 }
 
 void loop() {
   switch (stateData.currentState) {
-    case SENSORS_CALIBRATING:
-      break;
     case DEBUG:
       debugLoop(ALL);
       break;
@@ -65,6 +63,10 @@ void loop() {
       break;
     case LANDED:
       landedLoop();
+      break;
+    case SENSORS_CALIBRATING:
+      break;
+    default:
       break;
   }
 }

@@ -1,4 +1,7 @@
 #include "unifiedCollector.h"
+#include "structs.h"
+#include "sensors.h"
+#include "sdCards.h"
 
 void flushBuffer(uint8_t card) {
   if (!writeBufferToSD(collectorBuffer.buffer, collectorBuffer.bufferIndex, card)) {
@@ -27,7 +30,7 @@ void writeToBuffer(uint8_t sensorType, const void* data, uint8_t dataSize, uint3
 }
 
 void updateSensors() {
-  uint32_t timestamp = millis();
+  uint32_t timestamp = GET_TIME_MS();
 
   // Accelerometer and Gyroscope at 100Hz
   if (timestamp - flightData.lastAccelGyroTime >= ACCEL_GYRO_INTERVAL) {
@@ -54,8 +57,8 @@ void updateSensors() {
       writeToBuffer(SENSOR_BARO, &flightData.env, EnvironmentalData::SIZE, timestamp);
       
       // Track maximum altitude
-      if (flightData.env.pressureAltitude > flightData.maxAltitude) {
-        flightData.maxAltitude = flightData.env.pressureAltitude;
+      if (flightData.env.rawAlt > flightData.maxAltitude) {
+        flightData.maxAltitude = flightData.env.rawAlt;
       }
     }
     flightData.lastBaroTime = timestamp;

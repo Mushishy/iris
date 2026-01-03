@@ -2,12 +2,13 @@
 #define SENSORS_H
 
 #include <Arduino.h>
-#include <Arduino_BMI270_BMM150.h>  
-#include <Arduino_LPS22HB.h>        
+#include <Arduino_BMI270_BMM150.h> 
+#include <Arduino_LPS22HB.h>
 #include <TinyGPSPlus.h>
 
 #include "structs.h"
 #include "settings.h"
+#include "calibration.h"
 
 bool readAccelerometer(AccelerometerData& data);
 bool readGyroscope(GyroscopeData& data);

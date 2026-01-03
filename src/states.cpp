@@ -1,4 +1,8 @@
 #include "states.h"
+#include "sensors.h"
+#include "unifiedCollector.h"
+#include "telemetry.h"
+#include "sdCards.h"
 
 void changeState(FlightState newState) {
   stateData.currentState = newState;
@@ -65,7 +69,6 @@ void groundIdleLoop() {
         if (millis() - stateData.launchDetectionStart >= SECONDS_TO_MILLIS(0.1)) {
           Serial.println("Launch detected!");
           collectTelemetry();
-          flightData.launchAltitude = flightData.env.pressureAltitude;
           changeState(ASCENDING_ENGINE);
         }
       }  
@@ -102,8 +105,8 @@ void ascendingNoEngineLoop() {
   collectTelemetry();
   
   // Check for apogee every 100ms (faster detection for brief apogee)
-  if (millis() - stateData.lastAltitudeTime >= SECONDS_TO_MILLIS(0.1)) {
-    float currentAltitude = flightData.env.pressureAltitude;
+  if (GET_TIME_MS() - stateData.lastAltitudeTime >= SECONDS_TO_MILLIS(0.1)) {
+    float currentAltitude = flightData.env.rawAlt;
     
     // Improved apogee detection - require consecutive descending readings
     if (currentAltitude < stateData.previousAltitude) {
@@ -118,7 +121,7 @@ void ascendingNoEngineLoop() {
     }
     
     stateData.previousAltitude = currentAltitude;
-    stateData.lastAltitudeTime = millis();
+    stateData.lastAltitudeTime = GET_TIME_MS();
   }
 }
 
@@ -126,7 +129,8 @@ void descendingLoop() {
   collectTelemetry();
   
   // Simplified landing detection - altitude only with time confirmation
-  float currentAGL = flightData.env.pressureAltitude - flightData.launchAltitude;
+  // it would be possible to use EnvironmentalData.altitudeAboveLaunchPad
+  float currentAGL = flightData.env.rawAlt - flightData.launchAltitude;
   
   if (currentAGL < LANDING_ALTITUDE_THRESHOLD) {
     if (stateData.landingConfirmStart == 0) {
