@@ -8,13 +8,14 @@
 // ========== TELEMETRY MANAGEMENT ====================
 enum TelemetryType {
   ACCEL,
-  GYRO, 
+  GYRO,
   MAG,
   ENV,
-  GPS,
+  GPS_SENSOR,
+  ATTITUDE,
   ALL
 };
 
-String formatTestTelemetry(const FlightData& data, TelemetryType type = ALL);
+String formatTestTelemetry(const FlightData& data, TelemetryType type);
 
 #endif

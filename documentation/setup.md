@@ -34,8 +34,11 @@
 // GND GND
 ```
 
+
 ## Install PlatformIO IDE for VSCode
 Quickstart [Documentation](https://docs.platformio.org/en/latest/integration/ide/vscode.html)
+
+![](./images/platformio.png)
 
 
 ## Change Arduino_BMI270_BMM150 Library for higher
@@ -56,3 +59,11 @@ jump inside function  `bmm150_set_presetmode`
 ```c
 settings->data_rate = BMM150_DATA_RATE_30HZ;
 ```
+
+## Values interpretation
+
+![](./images/accelerometer.jpg)
+
+![](./images/gyroscope.jpg)
+
+![](./images/magnetometer.png)

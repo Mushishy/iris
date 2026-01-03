@@ -5,60 +5,49 @@
 
 #include "settings.h"
 
-// vx = ax * t; (you can find out position sx += vx * t)
-// if I know velocity I can calculate max velocity
-
-
 // ========== SENSOR DATA STRUCTURES ===================
 // Accelerometer data structure (g) - BMI270 returns float
 struct AccelerometerData {
   float x, y, z;
-  static constexpr uint8_t SIZE = 12;
-  // float totalAcceleration = sqrt(accel.x*accel.x + accel.y*accel.y + accel.z*accel.z); // g
+  float totalAcceleration; 
 };
 
-// Attitude data structure - calculated from accelerometer
+// Attitude data structure (degrees) - calculated from accel + mag 
 struct AttitudeData {
-  float pitch;    // degrees
-  float roll;     // degrees
-  float yaw;      // degrees (from magnetometer heading)
-  float offVert;  // degrees (off vertical)
-  static constexpr uint8_t SIZE = 16;
+  float pitch;    
+  float roll;     
+  float yaw;      // heading
+  float offVert;  // degrees off vertical
 };
 
 // Gyroscope data structure (°/s) - BMI270 returns float  
 struct GyroscopeData {
   float x, y, z;
-  static constexpr uint8_t SIZE = 12;  
-  // float angularRate = sqrt(gyro.x*gyro.x + gyro.y*gyro.y + gyro.z*gyro.z); °/s
+  float angularRate;  
 };
 
 // Magnetometer data structure (µT) - BMM150 returns float
 struct MagnetometerData {
   float x, y, z;
-  static constexpr uint8_t SIZE = 12; 
-  // float magneticFieldStrength = sqrt(mag.x*mag.x + mag.y*mag.y + mag.z*mag.z); // µT
+  float magneticFieldStrength;
 };
 
 // Environmental sensor data structure - LPS22HB returns float
 struct EnvironmentalData {
   float temperature;            // °C
   float pressure;               // kPa  
-  float rawAlt;                 // m
-  static constexpr uint8_t SIZE = 12; 
-  // float airDensity = (env.pressure * 100.0f) / (DRY_AIR_GAS_CONSTANT * (env.temperature + CELSIUS_TO_KELVIN)); // in kg/m³
-  // float altitudeAboveLaunchPad = env.rawAlt - launchPadAltitude; 
+  float altitudeAboveLaunchPad; // m (relative to launch pad)
+  float airDensity;             // kg/m³
 };
 
 // GPS data structure - TinyGPS++ returns double for lat/lng, others float
 struct GPSData {
-  double latitude;      // degrees
-  double longitude;     // degrees  
+  float latitude;      // degrees (converted from double)
+  float longitude;     // degrees (converted from double)  
   float hdop;           // horizontal dilution of precision
   float speed;          // km/h
   float course;         // degrees 
-  uint16_t satellites;  // number of satellites
-  static constexpr uint8_t SIZE = 26;
+  uint8_t satellites;  // number of satellites
 };
 
 // ========== GLOBALS ====================================  
@@ -67,26 +56,18 @@ struct FlightData {
   GyroscopeData gyro;                
   MagnetometerData mag;            
   EnvironmentalData env;           
-  GPSData gps;                     
+  GPSData gps;
+  AttitudeData attitude;           
   
   // Altitude tracking
   float maxAltitude = 0;           
-  float launchAltitude = 0;        
-  // float maxTotalAcceleration = 0;           
-  
-  // Timing variables for collection intervals
-  uint32_t lastAccelGyroTime = 0;  
-  uint32_t lastMagTime = 0;         
-  uint32_t lastBaroTime = 0;       
-  uint32_t lastGPSTime = 0;        
-  
-  static constexpr uint8_t SIZE = 98;
+  float launchAltitude = 0;
+  float maxTotalAcceleration = 0; 
 };
 
 struct UnifiedCollectorBuffer {
   uint8_t buffer[UNIFIED_BUFFER_SIZE];  
-  uint16_t bufferIndex = 0;             
-  static constexpr uint16_t SIZE = UNIFIED_BUFFER_SIZE + 2;
+  uint16_t bufferIndex;             
 };
 
 #endif

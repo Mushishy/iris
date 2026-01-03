@@ -1,4 +1,5 @@
 #include "sensors.h"
+#include "settings.h"
 
 // ========== GLOBAL VARIABLES (DEFINITIONS) ==========
 UART gpsSerial(digitalPinToPinName(GPS_RX_PIN), digitalPinToPinName(GPS_TX_PIN));
@@ -6,80 +7,101 @@ TinyGPSPlus gps;
 extern FlightData flightData;
 
 // ========== SENSOR READING FUNCTIONS ==========
-
+// Read from built-in BMI270 accelerometer
 bool readAccelerometer(AccelerometerData& data) {
-  // Read from built-in BMI270 accelerometer
   if (IMU.accelerationAvailable()) {
     IMU.readAcceleration(data.x, data.y, data.z);
-    // BMI270 returns values in g (earth gravity)
+    data = applyCalibratedAccelerometer(data);
+    // Calculate total acceleration magnitude
+    data.totalAcceleration = VECTOR_LENGTH(data.x, data.y, data.z);
     
-#ifdef CALIBRATION_ENABLED
-    extern SensorCalibration sensorCalibration;
-    if (sensorCalibration.accel.isCalibrated) {
-      applyCalibratedAccelerometer(data);
+    // Track maximum total acceleration
+    if (data.totalAcceleration > flightData.maxTotalAcceleration) {
+      flightData.maxTotalAcceleration = data.totalAcceleration;
     }
-#endif
     return true;
   }
   return false;
 }
 
+// Read from built-in BMI270 gyroscope
 bool readGyroscope(GyroscopeData& data) {
-  // Read from built-in BMI270 gyroscope
   if (IMU.gyroscopeAvailable()) {
     IMU.readGyroscope(data.x, data.y, data.z);
-    // BMI270 returns values in °/s (degrees per second)
-    
-#ifdef CALIBRATION_ENABLED
-    extern SensorCalibration sensorCalibration;
-    if (sensorCalibration.gyro.isCalibrated) {
-      applyCalibratedGyroscope(data);
-    }
-#endif
+    data = applyCalibratedGyroscope(data);
+    // Calculate angular rate magnitude
+    data.angularRate = VECTOR_LENGTH(data.x, data.y, data.z);
     return true;
   }
   return false;
 }
 
+// Read from built-in BMM150 magnetometer
 bool readMagnetometer(MagnetometerData& data) {
-  // Read from built-in BMM150 magnetometer
   if (IMU.magneticFieldAvailable()) {
     IMU.readMagneticField(data.x, data.y, data.z);  
-    // BMM150 returns values in µT (micro Tesla)
-#ifdef CALIBRATION_ENABLED
-#ifdef MAGNETOMETER_CALIBRATION_ENABLED
-    extern SensorCalibration sensorCalibration;
-    if (sensorCalibration.mag.isCalibrated) {
-      applyCalibratedMagnetometer(data);
-    }
-#endif
-#endif
+    data = applyCalibratedMagnetometer(data);
+    // Calculate magnetic field strength magnitude
+    data.magneticFieldStrength = VECTOR_LENGTH(data.x, data.y, data.z);
     return true;
   }
   return false;
 }
 
+void calculateAttitude(AttitudeData& attitude, AccelerometerData accel, MagnetometerData mag) {
+  // Roll and Pitch from accelerometer
+  attitude.roll = atan2f(accel.y, sqrtf(powf(accel.x, 2) + powf(accel.z, 2))) * 180.0f/PI;
+  attitude.pitch = atan2f(-accel.x, sqrtf(powf(accel.y, 2) + powf(accel.z, 2))) * 180.0f / PI;
+  
+  // Convert to radians for tilt compensation
+  float pitch_rad = attitude.pitch * PI / 180.0f;
+  float roll_rad = attitude.roll * PI / 180.0f;
+  
+  // Tilt-compensated magnetometer readings
+  float mag_x_comp = mag.x * cosf(pitch_rad) + mag.z * sinf(pitch_rad);
+  float mag_y_comp = mag.x * sinf(roll_rad) * sinf(pitch_rad) + 
+                     mag.y * cosf(roll_rad) - 
+                     mag.z * sinf(roll_rad) * cosf(pitch_rad);
+  
+  // Yaw (heading) from tilt-compensated magnetometer
+  attitude.yaw = atan2f(mag_y_comp, mag_x_comp) * 180.0f / PI;
+  attitude.yaw = fmodf(attitude.yaw + 360.0f, 360.0f); 
+  // Calculate off-vertical angle
+  attitude.offVert = sqrtf(powf(attitude.roll, 2) + powf(attitude.pitch, 2));
+}
+
+// Read from built-in LPS22HB barometric pressure sensor
 bool readEnvironmental(EnvironmentalData& data) {
-  // Read from built-in LPS22HB barometric pressure sensor
-  data.temperature = BARO.readTemperature();  // °C
-  data.pressure = BARO.readPressure();        // kPa (raw)
-  
-  // Calculate altitude using barometric formula  
-  data.rawAlt = SEA_LEVEL_ALTITUDE * (1.0 - pow(data.pressure / STANDARD_SEA_LEVEL_PRESSURE_KPA, BAROMETRIC_EXPONENT));
-  
-  // Check for valid readings
-  if (isnan(data.temperature) || isnan(data.pressure) || isnan(data.rawAlt)) {
+  data.temperature = BARO.readTemperature();  
+  data.pressure = BARO.readPressure();
+
+  // Check for valid readings first
+  if (isnanf(data.temperature) || isnanf(data.pressure)) {
     return false;
   }
   
+  // Calculate current altitude using barometric formula  
+  float currentAltitude = SEA_LEVEL_ALTITUDE * (1.0f - powf(data.pressure / STANDARD_SEA_LEVEL_PRESSURE_KPA, BAROMETRIC_EXPONENT));
+  
+  // Calculate altitude above launch pad (always relative to ground)
+  data.altitudeAboveLaunchPad = currentAltitude - flightData.launchAltitude > 0 ? currentAltitude - flightData.launchAltitude : 0;
+  
+  // Calculate air density using ideal gas law
+  data.airDensity = (data.pressure * KPA_TO_PASCAL) / (DRY_AIR_GAS_CONSTANT * (data.temperature + CELSIUS_TO_KELVIN));
+  
+  // Track maximum altitude (relative to launch pad)
+  if (data.altitudeAboveLaunchPad > flightData.maxAltitude) {
+    flightData.maxAltitude = data.altitudeAboveLaunchPad;
+  }
+
   return true;
 }
 
 bool readGPS(GPSData& data) {
   // GPS is valid if we have at least location data
   if (gps.location.isValid()) {
-    data.latitude = gps.location.lat();
-    data.longitude = gps.location.lng();
+    data.latitude = DOUBLE_TO_FLOAT(gps.location.lat());
+    data.longitude = DOUBLE_TO_FLOAT(gps.location.lng());
     data.hdop = gps.hdop.isValid() ? gps.hdop.hdop() : -1.0;
     data.satellites = gps.satellites.isValid() ? gps.satellites.value() : 0;
     data.speed = gps.speed.isValid() ? gps.speed.kmph() : -1.0;
@@ -94,36 +116,6 @@ void processGPSData() {
     gps.encode(gpsSerial.read());
   }
 }
-
-/*
-// Unused function for attitude calculation (roll, pitch, yaw) from accel and mag that could be calculated on Hermes
-AttitudeData calculateAttitude(const AccelerometerData& accel, const MagnetometerData& mag) {
-  AttitudeData attitude;
-  
-  // Roll and Pitch from accelerometer
-  attitude.roll = atan2(accel.y, sqrt(pow(accel.x, 2) + pow(accel.z, 2))) * 180.0/PI;
-  attitude.pitch = atan2(-accel.x, sqrt(pow(accel.y, 2) + pow(accel.z, 2))) * 180.0 / PI;
-  
-  // Convert to radians for tilt compensation
-  float pitch_rad = attitude.pitch * PI / 180.0;
-  float roll_rad = attitude.roll * PI / 180.0;
-  
-  // Tilt-compensated magnetometer readings
-  float mag_x_comp = mag.x * cos(pitch_rad) + mag.z * sin(pitch_rad);
-  float mag_y_comp = mag.x * sin(roll_rad) * sin(pitch_rad) + 
-                     mag.y * cos(roll_rad) - 
-                     mag.z * sin(roll_rad) * cos(pitch_rad);
-  
-  // Yaw (heading) from tilt-compensated magnetometer
-  attitude.yaw = atan2(mag_y_comp, mag_x_comp) * 180.0 / PI;
-  attitude.yaw = fmod(attitude.yaw + 360.0, 360.0); 
-
-  // Calculate off-vertical angle
-  attitude.offVert = sqrt(pow(attitude.roll, 2) + pow(attitude.pitch, 2));
-  
-  return attitude;
-}
-*/
 
 // ========== SENSOR INITIALIZATION ==========
 

@@ -14,14 +14,14 @@ int main() {
     FILE *input_file = fopen("test.txt", "rb");
     if (!input_file) {
         printf("Error: Cannot open test.txt for reading\n");
-        return 1;
+        return true;
     }
     
     FILE *output_file = fopen("test.csv", "w");
     if (!output_file) {
         printf("Error: Cannot create test.csv for writing\n");
         fclose(input_file);
-        return 1;
+        return true;
     }
     
     // Write CSV header
@@ -177,5 +177,5 @@ end_processing:
     printf("Processed %ld bytes total\n", bytes_processed);
     printf("Output saved to test.csv\n");
     
-    return 0;
+    return false;
 }

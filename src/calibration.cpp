@@ -1,7 +1,5 @@
 #include "calibration.h"
 
-#ifdef CALIBRATION_ENABLED
-
 #include <Arduino_BMI270_BMM150.h>
 #include <Arduino_LPS22HB.h>
 #include "settings.h"
@@ -9,53 +7,67 @@
 
 SensorCalibration sensorCalibration;
 
-// ========== APPLY CALIBRATION FUNCTIONS (TOP OF FILE) ==========
-
-void applyCalibratedAccelerometer(AccelerometerData& data) {
-  data.x = (data.x - sensorCalibration.accel.biasX) * sensorCalibration.accel.scaleX;
-  data.y = (data.y - sensorCalibration.accel.biasY) * sensorCalibration.accel.scaleY;
-  data.z = (data.z - sensorCalibration.accel.biasZ) * sensorCalibration.accel.scaleZ;
-}
-
-void applyCalibratedGyroscope(GyroscopeData& data) {
-  data.x -= sensorCalibration.gyro.biasX;
-  data.y -= sensorCalibration.gyro.biasY;
-  data.z -= sensorCalibration.gyro.biasZ;
-}
-
-#ifdef MAGNETOMETER_CALIBRATION_ENABLED
-void applyCalibratedMagnetometer(MagnetometerData& data) {
-  // Apply hard iron correction (offset)
-  data.x -= sensorCalibration.mag.hardIronX;
-  data.y -= sensorCalibration.mag.hardIronY;
-  data.z -= sensorCalibration.mag.hardIronZ;
-  
-  // Apply soft iron correction (scale and cross-axis)
-  float tempX = data.x;
-  float tempY = data.y;
-  float tempZ = data.z;
-  
-  data.x = sensorCalibration.mag.softIronXX * tempX + 
-           sensorCalibration.mag.softIronXY * tempY + 
-           sensorCalibration.mag.softIronXZ * tempZ;
-  data.y = sensorCalibration.mag.softIronYX * tempX + 
-           sensorCalibration.mag.softIronYY * tempY + 
-           sensorCalibration.mag.softIronYZ * tempZ;
-  data.z = sensorCalibration.mag.softIronZX * tempX + 
-           sensorCalibration.mag.softIronZY * tempY + 
-           sensorCalibration.mag.softIronZZ * tempZ;
-}
+AccelerometerData applyCalibratedAccelerometer(AccelerometerData data) {
+#ifdef CALIBRATION_ENABLED
+  if (sensorCalibration.accel.isCalibrated) {
+    data.x = (data.x - sensorCalibration.accel.biasX) * sensorCalibration.accel.scaleX;
+    data.y = (data.y - sensorCalibration.accel.biasY) * sensorCalibration.accel.scaleY;
+    data.z = (data.z - sensorCalibration.accel.biasZ) * sensorCalibration.accel.scaleZ;
+  }
 #endif
+  return data;
+}
+
+GyroscopeData applyCalibratedGyroscope(GyroscopeData data) {
+#ifdef CALIBRATION_ENABLED
+  if (sensorCalibration.gyro.isCalibrated) {
+    data.x -= sensorCalibration.gyro.biasX;
+    data.y -= sensorCalibration.gyro.biasY;
+    data.z -= sensorCalibration.gyro.biasZ;
+  }
+#endif
+  return data;
+}
+
+MagnetometerData applyCalibratedMagnetometer(MagnetometerData data) {
+#ifdef CALIBRATION_ENABLED
+#ifdef MAGNETOMETER_CALIBRATION_ENABLED
+  if (sensorCalibration.mag.isCalibrated) {
+    // Apply hard iron correction (offset)
+    data.x -= sensorCalibration.mag.hardIronX;
+    data.y -= sensorCalibration.mag.hardIronY;
+    data.z -= sensorCalibration.mag.hardIronZ;
+    
+    // Apply soft iron correction (scale and cross-axis)
+    float tempX = data.x;
+    float tempY = data.y;
+    float tempZ = data.z;
+    
+    data.x = sensorCalibration.mag.softIronXX * tempX + 
+             sensorCalibration.mag.softIronXY * tempY + 
+             sensorCalibration.mag.softIronXZ * tempZ;
+    data.y = sensorCalibration.mag.softIronYX * tempX + 
+             sensorCalibration.mag.softIronYY * tempY + 
+             sensorCalibration.mag.softIronYZ * tempZ;
+    data.z = sensorCalibration.mag.softIronZX * tempX + 
+             sensorCalibration.mag.softIronZY * tempY + 
+             sensorCalibration.mag.softIronZZ * tempZ;
+  }
+#endif
+#endif
+  return data;
+}
 
 // ========== CALIBRATION FUNCTIONS ==========
 
+#ifdef CALIBRATION_ENABLED
 bool calibrateAccelerometer() {
   Serial.println("Accelerometer calibration - place flat...");
 
   float sumX = 0, sumY = 0, sumZ = 0;
-  int samples = 0;
+  uint16_t samples = 0;
   
-  for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
+  for (uint16_t i = 0; i < CALIBRATION_SAMPLES; i++) {
     AccelerometerData data;
     if (IMU.accelerationAvailable()) {
       IMU.readAcceleration(data.x, data.y, data.z);
@@ -69,7 +81,7 @@ bool calibrateAccelerometer() {
   
   if (samples < CALIBRATION_SAMPLES * 0.8) {
     Serial.println("Accel calibration failed");
-    return false;
+    return false;  
   }
   
   sensorCalibration.accel.biasX = sumX / samples;
@@ -82,16 +94,16 @@ bool calibrateAccelerometer() {
   sensorCalibration.accel.isCalibrated = true;
   
   Serial.println("Accel calibration done");
-  return true;
+  return true;  
 }
 
 bool calibrateGyroscope() {
   Serial.println("Gyroscope calibration - keep still...");
   
   float sumX = 0, sumY = 0, sumZ = 0;
-  int samples = 0;
+  uint16_t samples = 0;
   
-  for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
+  for (uint16_t i = 0; i < CALIBRATION_SAMPLES; i++) {
     GyroscopeData data;
     if (IMU.gyroscopeAvailable()) {
       IMU.readGyroscope(data.x, data.y, data.z);
@@ -105,7 +117,7 @@ bool calibrateGyroscope() {
   
   if (samples < CALIBRATION_SAMPLES * 0.8) {
     Serial.println("Gyro calibration failed");
-    return false;
+    return false;  
   }
   
   sensorCalibration.gyro.biasX = sumX / samples;
@@ -114,7 +126,7 @@ bool calibrateGyroscope() {
   sensorCalibration.gyro.isCalibrated = true;
   
   Serial.println("Gyro calibration done");
-  return true;
+  return true;  
 }
 
 #ifdef MAGNETOMETER_CALIBRATION_ENABLED
@@ -178,9 +190,43 @@ bool calibrateMagnetometer() {
   sensorCalibration.mag.isCalibrated = true;
   
   Serial.println("Magnetometer calibration done");
-  return true;
+  return true;  
 }
 #endif
+
+bool calibrateBarometer() {
+  Serial.println("Barometer calibration - setting launch pad baseline...");
+  
+  float sumPressure = 0;
+  uint16_t samples = 0;
+  
+  for (uint16_t i = 0; i < CALIBRATION_SAMPLES; i++) {
+    float pressure = BARO.readPressure();
+    if (!isnanf(pressure)) {
+      sumPressure += pressure;
+      samples++;
+    }
+    delay(CALIBRATION_DELAY_MS);
+  }
+  
+  if (samples < CALIBRATION_SAMPLES * 0.8) {
+    Serial.println("Baro calibration failed");
+    return false;
+  }
+  
+  float avgPressure = sumPressure / samples;
+  
+  // Calculate sea level altitude from average pressure
+  extern FlightData flightData;
+  flightData.launchAltitude = SEA_LEVEL_ALTITUDE * (1.0f - powf(avgPressure / STANDARD_SEA_LEVEL_PRESSURE_KPA, BAROMETRIC_EXPONENT));
+  
+  Serial.print("Launch altitude baseline: ");
+  Serial.print(flightData.launchAltitude);
+  Serial.println("m above sea level");
+  Serial.println("Baro calibration done");
+  
+  return true;
+}
 
 bool calibrateAllSensors() {
   Serial.println("Starting calibration...");
@@ -189,9 +235,11 @@ bool calibrateAllSensors() {
   
   if (!calibrateAccelerometer()) success = false;
   if (!calibrateGyroscope()) success = false;
-#ifdef MAGNETOMETER_CALIBRATION_ENABLED
+  if (!calibrateBarometer()) success = false;
+  #ifdef MAGNETOMETER_CALIBRATION_ENABLED
   if (!calibrateMagnetometer()) success = false;
 #endif
+  
   
   if (success) {
     Serial.println("Calibration complete");
@@ -201,5 +249,4 @@ bool calibrateAllSensors() {
   
   return success;
 }
-
 #endif

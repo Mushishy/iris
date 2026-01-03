@@ -6,15 +6,15 @@
 //#define DEBUG_SD_VERBOSE                      // Uncomment to enable verbose SD card write debugging
 
 // Calibration Settings
-#define CALIBRATION_ENABLED                     // Comment out to disable sensor calibration
+//#define GPS_WAIT_FOR_SATELLITES               // Uncomment to enable waiting for GPS lock before proceeding   
+//#define CALIBRATION_ENABLED                     // Comment out to disable sensor calibration
+//#define MAGNETOMETER_CALIBRATION_ENABLED      // Comment out to disable magnetometer calibration (requires device movement)
 #ifdef CALIBRATION_ENABLED
   #define CALIBRATION_SAMPLES 1000              // Number of samples for calibration
   #define CALIBRATION_DELAY_MS 10               // Delay between calibration samples
-//  #define MAGNETOMETER_CALIBRATION_ENABLED      // Comment out to disable magnetometer calibration (requires device movement)
-//  #define MAGNETOMETER_CALIBRATION_TIME 30000   // Magnetometer calibration time in milliseconds
-//  #define MAGNETOMETER_LED_GLOW                 // Turn on built-in LED during magnetometer calibration
-//  #define GPS_WAIT_FOR_SATELLITES               // Uncomment to enable waiting for GPS lock before proceeding
-#endif   
+  #define MAGNETOMETER_CALIBRATION_TIME 30000   // Magnetometer calibration time in milliseconds
+  #define MAGNETOMETER_LED_GLOW                 // Turn on built-in LED during magnetometer calibration
+#endif
 
 // Communication Settings
 #define SERIAL_BAUD_RATE 115200                 
@@ -41,11 +41,7 @@
 #define SENSOR_MAG   0x03
 #define SENSOR_BARO  0x04
 #define SENSOR_GPS   0x05
-
-#define ACCEL_GYRO_INTERVAL 4      // 4ms = 250Hz
-#define MAG_INTERVAL   33          // 33ms ≈ 30Hz
-#define BARO_INTERVAL  4           // 4ms = 250Hz
-#define GPS_INTERVAL   100         // 100ms = 10Hz
+#define SENSOR_ATTITUDE 0x06
 
 // States detection thresholds
 #define LAUNCH_THRESHOLD 1.53f   // Launch detection threshold in g (15m/s² / 9.8m/s²)
@@ -60,11 +56,10 @@
 #define MILLIS_TO_SECONDS(ms) ((ms) / 1000)         // Convert milliseconds to seconds
 
 // MATH OPTIMIZATION MACROS
-#define VECTOR_LENGTH(x, y, z) sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2))  // 3D vector magnitude
-#define SAFE_DIVIDE(a, b, default) ((b) != 0 ? (a) / (b) : (default))   // Safe division with fallback
+#define VECTOR_LENGTH(x, y, z) sqrtf((x) * (x) + (y) * (y) + (z) * (z))  // 3D vector magnitude using C float math
+#define DOUBLE_TO_FLOAT(x) ((float)(x))                                  // Macro for converting double to float           
 
 // Physical Constants
-#define EARTH_GRAVITY_MS2 9.8                    // Earth's gravity acceleration (m/s²)
 #define STANDARD_SEA_LEVEL_PRESSURE_KPA 101.325  // Standard atmospheric pressure at sea level (kPa)
 #define SEA_LEVEL_ALTITUDE 44330.0               // Constant for barometric altitude calculation (m)
 #define BAROMETRIC_EXPONENT 0.1903               // Exponent for barometric altitude formula
@@ -72,5 +67,4 @@
 #define DRY_AIR_GAS_CONSTANT 287.05f             // Specific gas constant for dry air (J/kg·K)
 #define CELSIUS_TO_KELVIN 273.15f                // Convert Celsius to Kelvin
 #define KPA_TO_PASCAL 100.0f                     // Convert kPa to Pascal
-
 #endif

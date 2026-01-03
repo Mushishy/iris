@@ -32,32 +32,8 @@ baro.smoothAlt = altSum / filterSize;
 
 ### Extra information being collected 
 
-1. AccelerometerData
-```C
-totalAcceleration
-velocity 
-maxVelocity
-s
-positionFromStart // independent from GPS
-
-pitch
-roll
-yaw // heading
-offVert // degrees off vertical
-``` 
-
-2. GyroscopeData 
+Velocity could be calculated as well as position from acceleration - independent from GPS.
 ```
-angularRate
-```
-
-3. MagnetometerData
-```
-magneticFieldStrength
-```
-
-4. EnvironmentalData
-```
-airDensity
-altitudeAboveLaunchPad
+vx = ax * t;
+sx += vx * t;
 ```

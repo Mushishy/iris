@@ -40,13 +40,13 @@ void setup() {
   //testSDCard(SD_CS_2);
   deleteFlightDataFile(SD_CS_2);
   
-  changeState(DEBUG);
+  changeState(DEBUG_STATE);
   stateData.startTime = GET_TIME_MS();
 }
 
 void loop() {
   switch (stateData.currentState) {
-    case DEBUG:
+    case DEBUG_STATE:
       debugLoop(ALL);
       break;
     case GROUND_IDLE:

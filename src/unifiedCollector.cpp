@@ -1,7 +1,9 @@
+#include <string.h>
 #include "unifiedCollector.h"
 #include "structs.h"
 #include "sensors.h"
 #include "sdCards.h"
+#include "states.h"
 
 void flushBuffer(uint8_t card) {
   if (!writeBufferToSD(collectorBuffer.buffer, collectorBuffer.bufferIndex, card)) {
@@ -32,44 +34,27 @@ void writeToBuffer(uint8_t sensorType, const void* data, uint8_t dataSize, uint3
 void updateSensors() {
   uint32_t timestamp = GET_TIME_MS();
 
-  // Accelerometer and Gyroscope at 100Hz
-  if (timestamp - flightData.lastAccelGyroTime >= ACCEL_GYRO_INTERVAL) {
-    if (readAccelerometer(flightData.accel)) {
-      writeToBuffer(SENSOR_ACCEL, &flightData.accel, AccelerometerData::SIZE, timestamp);
-    }
-    if (readGyroscope(flightData.gyro)) {
-      writeToBuffer(SENSOR_GYRO, &flightData.gyro, GyroscopeData::SIZE, timestamp);
-    }
-    flightData.lastAccelGyroTime = timestamp;
+  // Read all sensors - they self-regulate through availability checks
+  if (readAccelerometer(flightData.accel)) {
+    writeToBuffer(SENSOR_ACCEL, &flightData.accel, sizeof(AccelerometerData), timestamp);
   }
-
-  // Magnetometer
-  if (timestamp - flightData.lastMagTime >= MAG_INTERVAL) {
-    if (readMagnetometer(flightData.mag)) {
-      writeToBuffer(SENSOR_MAG, &flightData.mag, MagnetometerData::SIZE, timestamp);
-    }
-    flightData.lastMagTime = timestamp;
+  
+  if (readGyroscope(flightData.gyro)) {
+    writeToBuffer(SENSOR_GYRO, &flightData.gyro, sizeof(GyroscopeData), timestamp);
   }
-
-  // Barometer
-  if (timestamp - flightData.lastBaroTime >= BARO_INTERVAL) {
-    if (readEnvironmental(flightData.env)) {
-      writeToBuffer(SENSOR_BARO, &flightData.env, EnvironmentalData::SIZE, timestamp);
-      
-      // Track maximum altitude
-      if (flightData.env.rawAlt > flightData.maxAltitude) {
-        flightData.maxAltitude = flightData.env.rawAlt;
-      }
-    }
-    flightData.lastBaroTime = timestamp;
+  
+  if (readMagnetometer(flightData.mag)) {
+    writeToBuffer(SENSOR_MAG, &flightData.mag, sizeof(MagnetometerData), timestamp);
   }
-
-  // GPS
-  if (timestamp - flightData.lastGPSTime >= GPS_INTERVAL) {
-    processGPSData();
-    if (readGPS(flightData.gps)) {
-      writeToBuffer(SENSOR_GPS, &flightData.gps, GPSData::SIZE, timestamp);
-    }
-    flightData.lastGPSTime = timestamp;
+  
+  if (readEnvironmental(flightData.env)) {
+    calculateAttitude(flightData.attitude, flightData.accel, flightData.mag);
+    writeToBuffer(SENSOR_BARO, &flightData.env, sizeof(EnvironmentalData), timestamp);
+    writeToBuffer(SENSOR_ATTITUDE, &flightData.attitude, sizeof(AttitudeData), timestamp);
+  }
+  
+  processGPSData();
+  if (readGPS(flightData.gps)) {
+    writeToBuffer(SENSOR_GPS, &flightData.gps, sizeof(GPSData), timestamp);
   }
 }

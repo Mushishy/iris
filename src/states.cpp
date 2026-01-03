@@ -1,15 +1,14 @@
 #include "states.h"
+#include "settings.h" 
 #include "sensors.h"
 #include "unifiedCollector.h"
 #include "telemetry.h"
 #include "sdCards.h"
 
 void changeState(FlightState newState) {
-  stateData.currentState = newState;
   Serial.print("STATE: ");
-  
   switch (newState) {
-    case DEBUG:
+    case DEBUG_STATE:
       Serial.println("Debug");
       break;
     case SENSORS_CALIBRATING:
@@ -31,6 +30,7 @@ void changeState(FlightState newState) {
       Serial.println("Landed");
       break;
   }
+  stateData.currentState = newState;
 }
 
 void collectTelemetry() { 
@@ -44,12 +44,12 @@ void debugLoop(TelemetryType type) {
   // Collect telemetry for 1 minute and print current state every 5 seconds
   collectTelemetry();
 #ifdef DEBUG_STATE_ENABLED
-  if (millis() - stateData.lastEchoTime >= SECONDS_TO_MILLIS(5)) { 
+  if (GET_TIME_MS() - stateData.lastEchoTime >= SECONDS_TO_MILLIS(5)) { 
     Serial.println(formatTestTelemetry(flightData, type));
-    stateData.lastEchoTime = millis();
+    stateData.lastEchoTime = GET_TIME_MS();
   }
 #endif
-  if (millis() - stateData.startTime >= SECONDS_TO_MILLIS(60)) { 
+  if (GET_TIME_MS() - stateData.startTime >= SECONDS_TO_MILLIS(60)) { 
     Serial.println("1 minute telemetry collection complete");
     changeState(LANDED);
   }
@@ -57,18 +57,16 @@ void debugLoop(TelemetryType type) {
 
 void groundIdleLoop() {  
   // Wait for launch detection (acceleration > threshold)
-  AccelerometerData accel;  
-  if (readAccelerometer(accel)) {
-    float totalAccel = VECTOR_LENGTH(accel.x, accel.y, accel.z);
+  if (readAccelerometer(flightData.accel)) {
+    float totalAccel = VECTOR_LENGTH(flightData.accel.x, flightData.accel.y, flightData.accel.z);
     if (totalAccel > LAUNCH_THRESHOLD) { 
       if (stateData.launchDetectionStart == 0) {
         // Start the 0.1 second timer
-        stateData.launchDetectionStart = millis();
+        stateData.launchDetectionStart = GET_TIME_MS();
       } else {
         // Check if 0.1 seconds have passed
-        if (millis() - stateData.launchDetectionStart >= SECONDS_TO_MILLIS(0.1)) {
+        if (GET_TIME_MS() - stateData.launchDetectionStart >= SECONDS_TO_MILLIS(0.1)) {
           Serial.println("Launch detected!");
-          collectTelemetry();
           changeState(ASCENDING_ENGINE);
         }
       }  
@@ -87,10 +85,10 @@ void ascendingEngineLoop() {
   if (totalAccel <= ENGINE_CUTOFF_THRESHOLD) {
     if (stateData.engineCutoffStart == 0) {
       // Start the 0.1 second timer
-      stateData.engineCutoffStart = millis();
+      stateData.engineCutoffStart = GET_TIME_MS();
     } else {
       // Check if 0.1 seconds have passed
-      if (millis() - stateData.engineCutoffStart >= SECONDS_TO_MILLIS(0.1)) {
+      if (GET_TIME_MS() - stateData.engineCutoffStart >= SECONDS_TO_MILLIS(0.1)) {
         Serial.println("Engine cutoff detected!");
         changeState(ASCENDING_NO_ENGINE);
       }
@@ -106,7 +104,7 @@ void ascendingNoEngineLoop() {
   
   // Check for apogee every 100ms (faster detection for brief apogee)
   if (GET_TIME_MS() - stateData.lastAltitudeTime >= SECONDS_TO_MILLIS(0.1)) {
-    float currentAltitude = flightData.env.rawAlt;
+    float currentAltitude = flightData.env.altitudeAboveLaunchPad;
     
     // Improved apogee detection - require consecutive descending readings
     if (currentAltitude < stateData.previousAltitude) {
@@ -128,22 +126,18 @@ void ascendingNoEngineLoop() {
 void descendingLoop() {
   collectTelemetry();
   
-  // Simplified landing detection - altitude only with time confirmation
-  // it would be possible to use EnvironmentalData.altitudeAboveLaunchPad
-  float currentAGL = flightData.env.rawAlt - flightData.launchAltitude;
-  
-  if (currentAGL < LANDING_ALTITUDE_THRESHOLD) {
+  if (flightData.env.altitudeAboveLaunchPad < LANDING_ALTITUDE_THRESHOLD) {
     if (stateData.landingConfirmStart == 0) {
       // Start landing confirmation timer
       stateData.landingConfirmStart = millis();
-      stateData.landingAltitude = currentAGL;
+      stateData.landingAltitude = flightData.env.altitudeAboveLaunchPad;
       Serial.println("Potential landing detected - confirming...");
     } else {
       // Check if confirmation period has passed
       if (millis() - stateData.landingConfirmStart >= LANDING_CONFIRM_TIME) {
         Serial.println("Landing confirmed!");
         Serial.print("Final AGL: ");
-        Serial.print(currentAGL);
+        Serial.print(flightData.env.altitudeAboveLaunchPad);
         Serial.println("m");
         changeState(LANDED);
       }
@@ -155,6 +149,6 @@ void descendingLoop() {
 }
 
 void landedLoop() {
-  readBufferFromSD();
+  readBufferFromSD(SD_CS_2);  // Use default SD card 2
   while(1){}
 }
