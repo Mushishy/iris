@@ -5,54 +5,59 @@
 #include "utils.h"
 #include "structs.h"
 
-SensorCalibration sensorCalibration;
+AccelerometerCalibration sensorAccelCalib;
+GyroscopeCalibration sensorGyroCalib;
+MagnetometerCalibration sensorMagCalib;
 
 AccelerometerData applyCalibratedAccelerometer(AccelerometerData data)
 {
-  if (sensorCalibration.isCalibrated)
-  {
-    data.x = (data.x - sensorCalibration.accel.biasX) * sensorCalibration.accel.scaleX;
-    data.y = (data.y - sensorCalibration.accel.biasY) * sensorCalibration.accel.scaleY;
-    data.z = (data.z - sensorCalibration.accel.biasZ) * sensorCalibration.accel.scaleZ;
-  }
+#ifndef CALIBRATION_ENABLED
+  return data;
+#endif
+
+  data.x = (data.x - sensorAccelCalib.biasX) * sensorAccelCalib.scaleX;
+  data.y = (data.y - sensorAccelCalib.biasY) * sensorAccelCalib.scaleY;
+  data.z = (data.z - sensorAccelCalib.biasZ) * sensorAccelCalib.scaleZ;
   return data;
 }
 
 GyroscopeData applyCalibratedGyroscope(GyroscopeData data)
 {
-  if (sensorCalibration.isCalibrated)
-  {
-    data.x -= sensorCalibration.gyro.biasX;
-    data.y -= sensorCalibration.gyro.biasY;
-    data.z -= sensorCalibration.gyro.biasZ;
-  }
+#ifndef CALIBRATION_ENABLED
+  return data;
+#endif
+
+  data.x -= sensorGyroCalib.biasX;
+  data.y -= sensorGyroCalib.biasY;
+  data.z -= sensorGyroCalib.biasZ;
   return data;
 }
 
 MagnetometerData applyCalibratedMagnetometer(MagnetometerData data)
 {
-  if (sensorCalibration.isCalibrated)
-  {
-    // Apply hard iron correction (offset)
-    data.x -= sensorCalibration.mag.hardIronX;
-    data.y -= sensorCalibration.mag.hardIronY;
-    data.z -= sensorCalibration.mag.hardIronZ;
+#ifndef CALIBRATION_ENABLED
+  return data;
+#endif
 
-    // Apply soft iron correction (scale and cross-axis)
-    float tempX = data.x;
-    float tempY = data.y;
-    float tempZ = data.z;
+  // Apply hard iron correction (offset)
+  data.x -= sensorMagCalib.hardIronX;
+  data.y -= sensorMagCalib.hardIronY;
+  data.z -= sensorMagCalib.hardIronZ;
 
-    data.x = sensorCalibration.mag.softIronXX * tempX +
-             sensorCalibration.mag.softIronXY * tempY +
-             sensorCalibration.mag.softIronXZ * tempZ;
-    data.y = sensorCalibration.mag.softIronYX * tempX +
-             sensorCalibration.mag.softIronYY * tempY +
-             sensorCalibration.mag.softIronYZ * tempZ;
-    data.z = sensorCalibration.mag.softIronZX * tempX +
-             sensorCalibration.mag.softIronZY * tempY +
-             sensorCalibration.mag.softIronZZ * tempZ;
-  }
+  // Apply soft iron correction (scale and cross-axis)
+  float tempX = data.x;
+  float tempY = data.y;
+  float tempZ = data.z;
+
+  data.x = sensorMagCalib.softIronXX * tempX +
+           sensorMagCalib.softIronXY * tempY +
+           sensorMagCalib.softIronXZ * tempZ;
+  data.y = sensorMagCalib.softIronYX * tempX +
+           sensorMagCalib.softIronYY * tempY +
+           sensorMagCalib.softIronYZ * tempZ;
+  data.z = sensorMagCalib.softIronZX * tempX +
+           sensorMagCalib.softIronZY * tempY +
+           sensorMagCalib.softIronZZ * tempZ;
   return data;
 }
 
@@ -84,13 +89,13 @@ void calibrateAccelerometer()
     return;
   }
 
-  sensorCalibration.accel.biasX = sumX / samples;
-  sensorCalibration.accel.biasY = sumY / samples;
-  sensorCalibration.accel.biasZ = (sumZ / samples) - 1.0;
+  sensorAccelCalib.biasX = sumX / samples;
+  sensorAccelCalib.biasY = sumY / samples;
+  sensorAccelCalib.biasZ = (sumZ / samples) - 1.0;
 
-  sensorCalibration.accel.scaleX = 1.0;
-  sensorCalibration.accel.scaleY = 1.0;
-  sensorCalibration.accel.scaleZ = 1.0;
+  sensorAccelCalib.scaleX = 1.0;
+  sensorAccelCalib.scaleY = 1.0;
+  sensorAccelCalib.scaleZ = 1.0;
 
   Serial.println("Accel calibration done");
 }
@@ -122,9 +127,9 @@ void calibrateGyroscope()
     return;
   }
 
-  sensorCalibration.gyro.biasX = sumX / samples;
-  sensorCalibration.gyro.biasY = sumY / samples;
-  sensorCalibration.gyro.biasZ = sumZ / samples;
+  sensorGyroCalib.biasX = sumX / samples;
+  sensorGyroCalib.biasY = sumY / samples;
+  sensorGyroCalib.biasZ = sumZ / samples;
 
   Serial.println("Gyro calibration done");
 }
@@ -172,23 +177,23 @@ void calibrateMagnetometer()
   digitalWrite(LED_BUILTIN, LOW);
 
   // Calculate hard iron correction (offset)
-  sensorCalibration.mag.hardIronX = (maxX + minX) / 2.0;
-  sensorCalibration.mag.hardIronY = (maxY + minY) / 2.0;
-  sensorCalibration.mag.hardIronZ = (maxZ + minZ) / 2.0;
+  sensorMagCalib.hardIronX = (maxX + minX) / 2.0;
+  sensorMagCalib.hardIronY = (maxY + minY) / 2.0;
+  sensorMagCalib.hardIronZ = (maxZ + minZ) / 2.0;
 
   // Calculate soft iron correction (scale factors)
   float avgRange = ((maxX - minX) + (maxY - minY) + (maxZ - minZ)) / 3.0;
-  sensorCalibration.mag.softIronXX = avgRange / (maxX - minX);
-  sensorCalibration.mag.softIronYY = avgRange / (maxY - minY);
-  sensorCalibration.mag.softIronZZ = avgRange / (maxZ - minZ);
+  sensorMagCalib.softIronXX = avgRange / (maxX - minX);
+  sensorMagCalib.softIronYY = avgRange / (maxY - minY);
+  sensorMagCalib.softIronZZ = avgRange / (maxZ - minZ);
 
   // Set cross-axis terms to zero (simple calibration)
-  sensorCalibration.mag.softIronXY = 0.0;
-  sensorCalibration.mag.softIronXZ = 0.0;
-  sensorCalibration.mag.softIronYX = 0.0;
-  sensorCalibration.mag.softIronYZ = 0.0;
-  sensorCalibration.mag.softIronZX = 0.0;
-  sensorCalibration.mag.softIronZY = 0.0;
+  sensorMagCalib.softIronXY = 0.0;
+  sensorMagCalib.softIronXZ = 0.0;
+  sensorMagCalib.softIronYX = 0.0;
+  sensorMagCalib.softIronYZ = 0.0;
+  sensorMagCalib.softIronZX = 0.0;
+  sensorMagCalib.softIronZY = 0.0;
 
   Serial.println("Magnetometer calibration done");
 }

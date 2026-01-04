@@ -24,16 +24,6 @@ struct MagnetometerCalibration
   float softIronZX, softIronZY, softIronZZ;
 };
 
-struct SensorCalibration
-{
-  AccelerometerCalibration accel;
-  GyroscopeCalibration gyro;
-  MagnetometerCalibration mag;
-  bool isCalibrated;
-};
-
-extern SensorCalibration sensorCalibration;
-
 AccelerometerData applyCalibratedAccelerometer(AccelerometerData data);
 GyroscopeData applyCalibratedGyroscope(GyroscopeData data);
 MagnetometerData applyCalibratedMagnetometer(MagnetometerData data);

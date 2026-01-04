@@ -110,8 +110,8 @@ bool readGPS(GPSData *data)
   // GPS is valid if we have at least location data
   if (gps.location.isValid())
   {
-    data->latitude = DOUBLE_TO_FLOAT(gps.location.lat());
-    data->longitude = DOUBLE_TO_FLOAT(gps.location.lng());
+    data->latitude = (float)(gps.location.lat());
+    data->longitude = (float)(gps.location.lng());
     data->hdop = gps.hdop.isValid() ? gps.hdop.hdop() : -1.0;
     data->satellites = gps.satellites.isValid() ? gps.satellites.value() : 0;
     data->speed = gps.speed.isValid() ? gps.speed.kmph() : -1.0;

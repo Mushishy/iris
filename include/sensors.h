@@ -10,8 +10,6 @@
 #include "config.h"
 #include "calibration.h"
 
-extern SensorCalibration sensorCalibration;
-
 bool readAccelerometer(AccelerometerData *data);
 bool readGyroscope(GyroscopeData *data);
 bool readMagnetometer(MagnetometerData *data);
