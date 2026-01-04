@@ -159,15 +159,8 @@ bool initializeSensors()
   else
     Serial.println("Baro init");
 
-#ifdef CALIBRATION_ENABLED
-  Serial.println();
-  if (calibrateAllSensors())
-    Serial.println("Sensors ready");
-  else
-    Serial.println("Calibration failed - using raw data");
-#else
-  Serial.println("Sensors ready (no calibration)");
-#endif
+  Serial.println("Calibrating sensors...");
+  calibrateAllSensors();
 
   return true;
 }

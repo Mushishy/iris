@@ -11,10 +11,6 @@ MagnetometerCalibration sensorMagCalib;
 
 AccelerometerData applyCalibratedAccelerometer(AccelerometerData data)
 {
-#ifndef CALIBRATION_ENABLED
-  return data;
-#endif
-
   data.x = (data.x - sensorAccelCalib.biasX) * sensorAccelCalib.scaleX;
   data.y = (data.y - sensorAccelCalib.biasY) * sensorAccelCalib.scaleY;
   data.z = (data.z - sensorAccelCalib.biasZ) * sensorAccelCalib.scaleZ;
@@ -23,10 +19,6 @@ AccelerometerData applyCalibratedAccelerometer(AccelerometerData data)
 
 GyroscopeData applyCalibratedGyroscope(GyroscopeData data)
 {
-#ifndef CALIBRATION_ENABLED
-  return data;
-#endif
-
   data.x -= sensorGyroCalib.biasX;
   data.y -= sensorGyroCalib.biasY;
   data.z -= sensorGyroCalib.biasZ;
@@ -35,10 +27,6 @@ GyroscopeData applyCalibratedGyroscope(GyroscopeData data)
 
 MagnetometerData applyCalibratedMagnetometer(MagnetometerData data)
 {
-#ifndef CALIBRATION_ENABLED
-  return data;
-#endif
-
   // Apply hard iron correction (offset)
   data.x -= sensorMagCalib.hardIronX;
   data.y -= sensorMagCalib.hardIronY;
@@ -236,12 +224,43 @@ void calibrateBarometer()
 
 void calibrateAllSensors()
 {
+#ifdef CALIBRATION_ENABLED
   Serial.println("Starting calibration...");
   calibrateAccelerometer();
   calibrateGyroscope();
   calibrateBarometer();
 #ifdef MAGNETOMETER_CALIBRATION_ENABLED
   calibrateMagnetometer();
+#endif
+#else
+  Serial.println("Calibration disabled");
+
+  sensorAccelCalib.biasX = 0.0;
+  sensorAccelCalib.biasY = 0.0;
+  sensorAccelCalib.biasZ = 0.0;
+  sensorAccelCalib.scaleX = 1.0;
+  sensorAccelCalib.scaleY = 1.0;
+  sensorAccelCalib.scaleZ = 1.0;
+
+  sensorGyroCalib.biasX = 0.0;
+  sensorGyroCalib.biasY = 0.0;
+  sensorGyroCalib.biasZ = 0.0;
+
+  // Hard iron (offset) - zero correction
+  sensorMagCalib.hardIronX = 0.0;
+  sensorMagCalib.hardIronY = 0.0;
+  sensorMagCalib.hardIronZ = 0.0;
+
+  // Soft iron (3x3 identity matrix)
+  sensorMagCalib.softIronXX = 1.0;
+  sensorMagCalib.softIronYY = 1.0;
+  sensorMagCalib.softIronZZ = 1.0;
+  sensorMagCalib.softIronXY = 0.0;
+  sensorMagCalib.softIronXZ = 0.0;
+  sensorMagCalib.softIronYX = 0.0;
+  sensorMagCalib.softIronYZ = 0.0;
+  sensorMagCalib.softIronZX = 0.0;
+  sensorMagCalib.softIronZY = 0.0;
 #endif
 
   return;

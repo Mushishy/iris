@@ -3,179 +3,304 @@
 #include <stdint.h>
 #include <string.h>
 
-// Sensor type constants (match your Arduino code)
-#define SENSOR_ACCEL 1
-#define SENSOR_GYRO  2
-#define SENSOR_MAG   3
-#define SENSOR_BARO  4
-#define SENSOR_GPS   5
+// Sensor type definitions
+#define SENSOR_ACCEL 0x01
+#define SENSOR_GYRO 0x02
+#define SENSOR_MAG 0x03
+#define SENSOR_BARO 0x04
+#define SENSOR_GPS 0x05
+#define SENSOR_ATTITUDE 0x06
 
-int main() {
-    FILE *input_file = fopen("test.txt", "rb");
-    if (!input_file) {
-        printf("Error: Cannot open test.txt for reading\n");
-        return true;
+#define UNIFIED_BUFFER_SIZE 16384
+
+// Data structures
+typedef struct {
+    float x, y, z;
+    float totalAcceleration;
+} AccelerometerData;
+
+typedef struct {
+    float x, y, z;
+    float angularRate;
+} GyroscopeData;
+
+typedef struct {
+    float x, y, z;
+    float magneticFieldStrength;
+} MagnetometerData;
+
+typedef struct {
+    float temperature;            // °C
+    float pressure;               // kPa
+    float altitudeAboveLaunchPad; // m (relative to launch pad)
+    float airDensity;             // kg/m³
+} EnvironmentalData;
+
+typedef struct {
+    float latitude;     // degrees
+    float longitude;    // degrees
+    float hdop;         // horizontal dilution of precision
+    float speed;        // km/h
+    float course;       // degrees
+    uint8_t satellites; // number of satellites
+} GPSData;
+
+typedef struct {
+    float pitch;
+    float roll;
+    float yaw;     // heading
+    float offVert; // degrees off vertical
+} AttitudeData;
+
+// Function to get sensor type name
+const char* getSensorTypeName(uint8_t sensorType) {
+    switch (sensorType) {
+        case SENSOR_ACCEL: return "ACCEL";
+        case SENSOR_GYRO: return "GYRO";
+        case SENSOR_MAG: return "MAG";
+        case SENSOR_BARO: return "BARO";
+        case SENSOR_GPS: return "GPS";
+        case SENSOR_ATTITUDE: return "ATTITUDE";
+        default: return "UNKNOWN";
+    }
+}
+
+// Function to write CSV header
+void writeCSVHeader(FILE *csvFile) {
+    fprintf(csvFile, "timestamp,datatype,raw_data\n");
+}
+
+// Function to read and parse sensor data
+int readSensorData(FILE *file, uint8_t sensorType, uint32_t timestamp, FILE *csvFile) {
+    switch (sensorType) {
+        case SENSOR_ACCEL: {
+            AccelerometerData data;
+            if (fread(&data, sizeof(data), 1, file) != 1) {
+                printf("Error reading accelerometer data\n");
+                return 0;
+            }
+            fprintf(csvFile, "%u,ACCEL,%.3f, %.3f, %.3f, %.3f\n",
+                   timestamp, data.x, data.y, data.z, data.totalAcceleration);
+            return 1;
+        }
+        
+        case SENSOR_GYRO: {
+            GyroscopeData data;
+            if (fread(&data, sizeof(data), 1, file) != 1) {
+                printf("Error reading gyroscope data\n");
+                return 0;
+            }
+            fprintf(csvFile, "%u,GYRO,%.3f, %.3f, %.3f, %.3f\n",
+                   timestamp, data.x, data.y, data.z, data.angularRate);
+            return 1;
+        }
+        
+        case SENSOR_MAG: {
+            MagnetometerData data;
+            if (fread(&data, sizeof(data), 1, file) != 1) {
+                printf("Error reading magnetometer data\n");
+                return 0;
+            }
+            fprintf(csvFile, "%u,MAG,%.3f, %.3f, %.3f, %.3f\n",
+                   timestamp, data.x, data.y, data.z, data.magneticFieldStrength);
+            return 1;
+        }
+        
+        case SENSOR_BARO: {
+            EnvironmentalData data;
+            if (fread(&data, sizeof(data), 1, file) != 1) {
+                printf("Error reading environmental data\n");
+                return 0;
+            }
+            fprintf(csvFile, "%u,BARO,%.3f, %.3f, %.3f, %.3f\n",
+                   timestamp, data.temperature, data.pressure, data.altitudeAboveLaunchPad, data.airDensity);
+            return 1;
+        }
+        
+        case SENSOR_GPS: {
+            GPSData data;
+            if (fread(&data, sizeof(data), 1, file) != 1) {
+                printf("Error reading GPS data\n");
+                return 0;
+            }
+            fprintf(csvFile, "%u,GPS,%.6f, %.6f, %.2f, %u, %.2f, %.2f\n",
+                   timestamp, data.latitude, data.longitude, data.hdop, data.satellites, data.speed, data.course);
+            return 1;
+        }
+        
+        case SENSOR_ATTITUDE: {
+            AttitudeData data;
+            if (fread(&data, sizeof(data), 1, file) != 1) {
+                printf("Error reading attitude data\n");
+                return 0;
+            }
+            fprintf(csvFile, "%u,ATTITUDE,%.3f, %.3f, %.3f, %.3f\n",
+                   timestamp, data.roll, data.pitch, data.yaw, data.offVert);
+            return 1;
+        }
+        
+        default:
+            printf("Unknown sensor type: %u\n", sensorType);
+            return 0;
+    }
+}
+
+// Function to process a data chunk
+int processDataChunk(FILE *file, uint16_t bufferSize, long *totalBytesRead, 
+                    long fileSize, uint16_t chunkNumber, FILE *csvFile) {
+    printf("Processing chunk #%u: %u bytes (%ld/%ld)\n", 
+           chunkNumber, bufferSize, *totalBytesRead, fileSize);
+    
+    if (bufferSize > UNIFIED_BUFFER_SIZE || bufferSize == 0) {
+        printf("Error: Invalid buffer size: %u\n", bufferSize);
+        return 0;
     }
     
-    FILE *output_file = fopen("test.csv", "w");
-    if (!output_file) {
-        printf("Error: Cannot create test.csv for writing\n");
-        fclose(input_file);
-        return true;
+    uint16_t chunkBytesRead = 0;
+    while (chunkBytesRead < bufferSize && !feof(file)) {
+        // Read sensor type
+        uint8_t sensorType;
+        if (fread(&sensorType, 1, 1, file) != 1) {
+            printf("Error reading sensor type\n");
+            return 0;
+        }
+        chunkBytesRead++;
+        (*totalBytesRead)++;
+        
+        // Read timestamp
+        uint32_t timestamp;
+        if (fread(&timestamp, sizeof(uint32_t), 1, file) != 1) {
+            printf("Error reading timestamp\n");
+            return 0;
+        }
+        chunkBytesRead += sizeof(uint32_t);
+        (*totalBytesRead) += sizeof(uint32_t);
+        
+        // Read sensor data
+        if (!readSensorData(file, sensorType, timestamp, csvFile)) {
+            return 0;
+        }
+        
+        // Update bytes read based on sensor type
+        switch (sensorType) {
+            case SENSOR_ACCEL:
+                chunkBytesRead += sizeof(AccelerometerData);
+                (*totalBytesRead) += sizeof(AccelerometerData);
+                break;
+            case SENSOR_GYRO:
+                chunkBytesRead += sizeof(GyroscopeData);
+                (*totalBytesRead) += sizeof(GyroscopeData);
+                break;
+            case SENSOR_MAG:
+                chunkBytesRead += sizeof(MagnetometerData);
+                (*totalBytesRead) += sizeof(MagnetometerData);
+                break;
+            case SENSOR_BARO:
+                chunkBytesRead += sizeof(EnvironmentalData);
+                (*totalBytesRead) += sizeof(EnvironmentalData);
+                break;
+            case SENSOR_GPS:
+                chunkBytesRead += sizeof(GPSData);
+                (*totalBytesRead) += sizeof(GPSData);
+                break;
+            case SENSOR_ATTITUDE:
+                chunkBytesRead += sizeof(AttitudeData);
+                (*totalBytesRead) += sizeof(AttitudeData);
+                break;
+            default:
+                printf("Unknown sensor type, cannot determine size\n");
+                return 0;
+        }
+        
+        if (*totalBytesRead >= fileSize) {
+            break;
+        }
+    }
+    
+    return 1;
+}
+
+// Main function to parse flight data
+void parseFlightData(const char *inputFile, const char *outputFile) {
+    FILE *file = fopen(inputFile, "rb");
+    if (!file) {
+        printf("Error: Cannot open input file '%s'\n", inputFile);
+        return;
+    }
+    
+    FILE *csvFile = fopen(outputFile, "w");
+    if (!csvFile) {
+        printf("Error: Cannot create output file '%s'\n", outputFile);
+        fclose(file);
+        return;
     }
     
     // Write CSV header
-    fprintf(output_file, "Timestamp,SensorType,X,Y,Z,Extra1,Extra2,Extra3\n");
-    
-    printf("Converting flight data from test.txt to test.csv...\n");
+    writeCSVHeader(csvFile);
     
     // Get file size
-    fseek(input_file, 0, SEEK_END);
-    long file_size = ftell(input_file);
-    fseek(input_file, 0, SEEK_SET);
+    fseek(file, 0, SEEK_END);
+    long fileSize = ftell(file);
+    fseek(file, 0, SEEK_SET);
     
-    printf("File size: %ld bytes\n", file_size);
+    printf("=== Flight Data Parser ===\n");
+    printf("Input file: %s (%ld bytes)\n", inputFile, fileSize);
+    printf("Output file: %s\n", outputFile);
     
-    long bytes_processed = 0;
-    int chunk_number = 1;
+    if (fileSize == 0) {
+        printf("Input file is empty\n");
+        fclose(file);
+        fclose(csvFile);
+        return;
+    }
     
-    while (bytes_processed < file_size) {
-        // Read buffer size header (2 bytes)
-        uint16_t buffer_size;
-        if (fread(&buffer_size, sizeof(uint16_t), 1, input_file) != 1) {
-            printf("End of file or error reading buffer size\n");
+    long totalBytesRead = 0;
+    uint16_t chunkNumber = 1;
+    
+    while (!feof(file) && totalBytesRead < fileSize) {
+        // Read buffer size header
+        uint16_t bufferSize;
+        if (fread(&bufferSize, sizeof(uint16_t), 1, file) != 1) {
+            printf("Error reading buffer size header\n");
             break;
         }
-        bytes_processed += sizeof(uint16_t);
+        totalBytesRead += sizeof(uint16_t);
         
-        printf("Processing chunk #%d: %d bytes\n", chunk_number++, buffer_size);
-        
-        // Validate buffer size
-        if (buffer_size == 0 || buffer_size > 10000) {
-            printf("Invalid buffer size: %d\n", buffer_size);
+        // Process the chunk
+        if (!processDataChunk(file, bufferSize, &totalBytesRead, fileSize, chunkNumber++, csvFile)) {
             break;
-        }
-        
-        // Process sensors in this buffer
-        uint16_t chunk_bytes_read = 0;
-        while (chunk_bytes_read < buffer_size) {
-            // Read sensor type (1 byte)
-            uint8_t sensor_type;
-            if (fread(&sensor_type, 1, 1, input_file) != 1) {
-                printf("Error reading sensor type\n");
-                break;
-            }
-            chunk_bytes_read++;
-            bytes_processed++;
-            
-            // Read timestamp (4 bytes)
-            uint32_t timestamp;
-            if (fread(&timestamp, sizeof(uint32_t), 1, input_file) != 1) {
-                printf("Error reading timestamp\n");
-                break;
-            }
-            chunk_bytes_read += 4;
-            bytes_processed += 4;
-            
-            // Process sensor data based on type
-            switch (sensor_type) {
-                case SENSOR_ACCEL: {
-                    float values[3];
-                    if (fread(values, sizeof(float), 3, input_file) == 3) {
-                        fprintf(output_file, "%u,ACCEL,%.3f,%.3f,%.3f,,,\n", 
-                               timestamp, values[0], values[1], values[2]);
-                        chunk_bytes_read += 12;
-                        bytes_processed += 12;
-                    } else {
-                        printf("Error reading accelerometer data\n");
-                    }
-                    break;
-                }
-                
-                case SENSOR_GYRO: {
-                    float values[3];
-                    if (fread(values, sizeof(float), 3, input_file) == 3) {
-                        fprintf(output_file, "%u,GYRO,%.3f,%.3f,%.3f,,,\n", 
-                               timestamp, values[0], values[1], values[2]);
-                        chunk_bytes_read += 12;
-                        bytes_processed += 12;
-                    } else {
-                        printf("Error reading gyroscope data\n");
-                    }
-                    break;
-                }
-                
-                case SENSOR_MAG: {
-                    float values[4];
-                    if (fread(values, sizeof(float), 4, input_file) == 4) {
-                        fprintf(output_file, "%u,MAG,%.3f,%.3f,%.3f,%.3f,,\n", 
-                               timestamp, values[0], values[1], values[2], values[3]);
-                        chunk_bytes_read += 16;
-                        bytes_processed += 16;
-                    } else {
-                        printf("Error reading magnetometer data\n");
-                    }
-                    break;
-                }
-                
-                case SENSOR_BARO: {
-                    float values[3];
-                    if (fread(values, sizeof(float), 3, input_file) == 3) {
-                        fprintf(output_file, "%u,BARO,%.3f,%.3f,%.3f,,,\n", 
-                               timestamp, values[0], values[1], values[2]); // temp, pressure, altitude
-                        chunk_bytes_read += 12;
-                        bytes_processed += 12;
-                    } else {
-                        printf("Error reading barometer data\n");
-                    }
-                    break;
-                }
-                
-                case SENSOR_GPS: {
-                    struct {
-                        double lat, lng;
-                        float hdop, speed, course;
-                        uint16_t sats;
-                    } gps_data;
-                    
-                    if (fread(&gps_data, 26, 1, input_file) == 1) {
-                        fprintf(output_file, "%u,GPS,%.6f,%.6f,%.2f,%.2f,%.2f,%u\n", 
-                               timestamp, gps_data.lat, gps_data.lng, gps_data.hdop, 
-                               gps_data.speed, gps_data.course, gps_data.sats);
-                        chunk_bytes_read += 26;
-                        bytes_processed += 26;
-                    } else {
-                        printf("Error reading GPS data\n");
-                    }
-                    break;
-                }
-                
-                default:
-                    printf("Unknown sensor type: %d\n", sensor_type);
-                    // Skip to avoid infinite loop - this is dangerous without knowing size
-                    goto end_processing;
-            }
-            
-            // Safety check
-            if (bytes_processed >= file_size) {
-                break;
-            }
         }
         
         // Show progress for large files
-        if (file_size > 10000) {
-            printf("Progress: %ld%% (%ld/%ld bytes)\n", 
-                   (bytes_processed * 100) / file_size, bytes_processed, file_size);
+        if (fileSize > 10000) {
+            printf("Progress: %ld%%\n", (totalBytesRead * 100) / fileSize);
         }
     }
     
-end_processing:
-    fclose(input_file);
-    fclose(output_file);
+    fclose(file);
+    fclose(csvFile);
     
-    printf("Conversion complete!\n");
-    printf("Processed %ld bytes total\n", bytes_processed);
-    printf("Output saved to test.csv\n");
+    printf("=== Parsing Complete ===\n");
+    printf("Total bytes processed: %ld\n", totalBytesRead);
+    printf("CSV file created: %s\n", outputFile);
+}
+
+int main(int argc, char *argv[]) {
+    const char *inputFile = "TEST.txt";
+    const char *outputFile = "test.csv";
     
-    return false;
+    // Allow command line arguments to override default file names
+    if (argc >= 2) {
+        inputFile = argv[1];
+    }
+    if (argc >= 3) {
+        outputFile = argv[2];
+    }
+    
+    printf("Flight Data Parser - Converting binary data to CSV\n");
+    printf("Input: %s -> Output: %s\n\n", inputFile, outputFile);
+    
+    parseFlightData(inputFile, outputFile);
+    
+    return 0;
 }
