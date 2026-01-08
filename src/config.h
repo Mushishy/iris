@@ -13,9 +13,9 @@
 #endif
 
 // Calibration Settings
-// #define GPS_WAIT_FOR_SATELLITES            // Uncomment to enable waiting for GPS lock before proceeding
-// #define CALIBRATION_ENABLED                // Comment out to disable sensor calibration
-// #define MAGNETOMETER_CALIBRATION_ENABLED   // Comment out to disable magnetometer calibration (requires device movement)
+//#define GPS_WAIT_FOR_SATELLITES            // Uncomment to enable waiting for GPS lock before proceeding
+//#define CALIBRATION_ENABLED                // Comment out to disable sensor calibration
+//#define MAGNETOMETER_CALIBRATION_ENABLED   // Comment out to disable magnetometer calibration (requires device movement)
 #define CALIBRATION_SAMPLES 1000            // Number of samples for calibration
 #define CALIBRATION_DELAY_MS 10             // Delay between calibration samples
 #define MAGNETOMETER_CALIBRATION_TIME 30000 // Magnetometer calibration time in milliseconds
@@ -35,7 +35,7 @@
 // GPS
 #define GPS_RX_PIN 9
 #define GPS_TX_PIN 8
-// #define GPS_PPS_PIN -
+//#define GPS_PPS_PIN -
 
 // SD
 #define SD_CS_1 10
@@ -64,8 +64,8 @@
 
 // Physical Constants
 #define STANDARD_SEA_LEVEL_PRESSURE_KPA 101.325 // Standard atmospheric pressure at sea level (kPa)
-#define SEA_LEVEL_ALTITUDE 44330.0              // Constant for barometric altitude calculation (m)
-#define BAROMETRIC_EXPONENT 0.1903              // Exponent for barometric altitude formula
+#define SEA_LEVEL_ALTITUDE 44330                // Constant for barometric altitude calculation (m)
+#define BAROMETRIC_EXPONENT 1/5.255              // Exponent for barometric altitude formula
 #define DECLINATION 5.54                        // Magnetic declination for your location (degrees)
 #define DRY_AIR_GAS_CONSTANT 287.05f            // Specific gas constant for dry air (J/kg·K)
 #define CELSIUS_TO_KELVIN 273.15f               // Convert Celsius to Kelvin

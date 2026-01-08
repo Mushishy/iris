@@ -23,8 +23,8 @@ void setup()
 {
   // Begin Serial
   Serial.begin(SERIAL_BAUD_RATE);
-  while (!Serial)
-    delay(10);
+  //while (!Serial)
+  //  delay(10);
   Serial.println("Nano 33 BLE Sense Rev2");
 
   // Initialize LoRa module

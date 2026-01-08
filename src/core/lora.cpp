@@ -28,6 +28,7 @@ void loraSend() {
     ResponseStatus rs = e220ttl.sendMessage(&packet, sizeof(packet));
     
     if (rs.code == E220_SUCCESS) {
+        /*
         Serial.println("Flight packet sent successfully");
         Serial.println("Rocket Name: " + String(packet.rocket_name));
         Serial.print("Altitude: "); Serial.print(packet.altitude); Serial.println(" m");
@@ -38,6 +39,7 @@ void loraSend() {
         Serial.print("Longitude: "); Serial.println(packet.lon, 6);
         Serial.print("Temperature: "); Serial.print(packet.temperature); Serial.println(" °C");
         Serial.print("Packet size: "); Serial.print(sizeof(FlightPacket)); Serial.println(" bytes");
+        */
     } else {
         Serial.println("Failed to send flight packet");
         Serial.println(rs.getResponseDescription());

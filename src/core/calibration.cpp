@@ -214,7 +214,11 @@ void calibrateBarometer()
 
   // Calculate sea level altitude from average pressure
   extern FlightData flightData;
-  flightData.launchAltitude = SEA_LEVEL_ALTITUDE * (1.0f - powf(avgPressure / STANDARD_SEA_LEVEL_PRESSURE_KPA, BAROMETRIC_EXPONENT));
+  flightData.launchAltitude = SEA_LEVEL_ALTITUDE * (1 - pow(avgPressure / STANDARD_SEA_LEVEL_PRESSURE_KPA, BAROMETRIC_EXPONENT));
+  if (flightData.launchAltitude < 0) {
+    Serial.println("Launch altitude below sea level, setting to 0");
+    flightData.launchAltitude = 0;
+  }
 
   Serial.print("Launch altitude baseline: ");
   Serial.print(flightData.launchAltitude);

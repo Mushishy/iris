@@ -90,10 +90,11 @@ bool readEnvironmental(EnvironmentalData *data)
     return false;
 
   // Calculate current altitude using barometric formula
-  float currentAltitude = SEA_LEVEL_ALTITUDE * (1.0f - powf(data->pressure / STANDARD_SEA_LEVEL_PRESSURE_KPA, BAROMETRIC_EXPONENT));
-
+  float currentAltitude = SEA_LEVEL_ALTITUDE * (1 - pow(data->pressure / STANDARD_SEA_LEVEL_PRESSURE_KPA, BAROMETRIC_EXPONENT));
   // Calculate altitude above launch pad (always relative to ground)
   data->altitudeAboveLaunchPad = currentAltitude - flightData.launchAltitude > 0 ? currentAltitude - flightData.launchAltitude : 0;
+  //Serial.println("Altitude above launch pad: ");
+  //Serial.println(data->altitudeAboveLaunchPad);
 
   // Calculate air density using ideal gas law
   data->airDensity = (data->pressure * KPA_TO_PASCAL) / (DRY_AIR_GAS_CONSTANT * (data->temperature + CELSIUS_TO_KELVIN));
@@ -110,13 +111,15 @@ bool readGPS(GPSData *data)
   // GPS is valid if we have at least location data
   if (gps.location.isValid())
   {
-    data->latitude = (float)(gps.location.lat());
-    data->longitude = (float)(gps.location.lng());
-    data->hdop = gps.hdop.isValid() ? gps.hdop.hdop() : -1.0;
-    data->satellites = gps.satellites.isValid() ? gps.satellites.value() : 0;
-    data->speed = gps.speed.isValid() ? gps.speed.kmph() : -1.0;
-    data->course = gps.course.isValid() ? gps.course.deg() : -1.0;
-    return true;
+    if (gps.location.isUpdated()) {
+      data->latitude = (float)(gps.location.lat());
+      data->longitude = (float)(gps.location.lng());
+      data->hdop = gps.hdop.isValid() ? gps.hdop.hdop() : -1.0;
+      data->satellites = gps.satellites.isValid() ? gps.satellites.value() : 0;
+      data->speed = gps.speed.isValid() ? gps.speed.kmph() : -1.0;
+      data->course = gps.course.isValid() ? gps.course.deg() : -1.0;
+      return true;
+    }
   }
   return false;
 }
